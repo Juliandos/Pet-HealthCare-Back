@@ -1,0 +1,172 @@
+# ===========================================
+# 🐍 FASTAPI / PYTHON BACKEND .gitignore
+# ===========================================
+
+# ---- Entornos virtuales ----
+venv/
+.env/
+.venv/
+env/
+ENV/
+venv.bak/
+env.bak/
+
+# ---- Variables de entorno ----
+*.env
+*.env.*
+!example.env
+
+# ---- Archivos de configuración sensibles ----
+*.pem
+*.key
+*.crt
+*.pfx
+*.cer
+
+# ---- Archivos temporales / caché ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pdb
+*.log
+*.pid
+*.seed
+*.bak
+*.swp
+*.swo
+*.tmp
+*.temp
+*.DS_Store
+*.idea/
+*.vscode/
+
+# ---- Archivos generados por compilación ----
+build/
+dist/
+*.egg-info/
+.eggs/
+.eggs-info/
+*.egg
+*.manifest
+*.spec
+pip-wheel-metadata/
+
+# ---- Alembic / Migraciones ----
+alembic/versions/*.pyc
+alembic/versions/__pycache__/
+alembic.ini.bak
+# Si quieres ignorar migraciones locales, descomenta la siguiente línea:
+# alembic/versions/
+
+# ---- Logs ----
+logs/
+*.log
+*.out
+*.err
+*.gz
+
+# ---- Archivos de test / cobertura ----
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ---- Configuración de IDEs / Editores ----
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+
+# ---- Archivos del sistema ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---- Docker / Containers ----
+docker-compose.override.yml
+.dockerignore
+.docker/
+*.tar
+*.img
+*.container
+*.pid
+
+# ---- Archivos de datos / media / uploads ----
+media/
+uploads/
+tmp/
+temp/
+files/
+static/
+staticfiles/
+data/
+db.sqlite3
+
+# ---- Node.js (por si usas frontend en el mismo repo) ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Poetry ----
+poetry.lock
+# (solo si usas pyproject.toml con Poetry, si no, puedes eliminar esta sección)
+
+# ---- PyInstaller ----
+*.manifest
+*.spec
+
+# ---- Jupyter / Notebooks ----
+.ipynb_checkpoints
+*.ipynb
+
+# ---- VSCode settings y entornos locales ----
+.history/
+*.code-workspace
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# ---- WSL y Linux especiales ----
+*.bash_history
+*.bashrc.backup
+*~
+.cache/
+*.deb
+*.snap
+
+# ---- Archivos generados automáticamente ----
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+*.json
+*.xml
+*.yaml
+*.yml
+*.bak
+
+# ---- Otros ----
+.mypy_cache/
+.pyre/
+.pytype/
+Pipfile.lock
+poetry.lock
+celerybeat-schedule
+celerybeat.pid
+
+# ===========================================
+# ✅ FIN DEL .gitignore
+# ===========================================
