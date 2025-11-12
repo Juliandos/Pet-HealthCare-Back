@@ -1,5 +1,5 @@
 -- =============================================
--- pet_health_tracker_schema.sql
+-- pet_health_tracker_schema.sql (versión corregida y completa)
 -- PostgreSQL 16+ - limpio y listo desde cero
 -- =============================================
 
@@ -70,8 +70,8 @@ EXECUTE FUNCTION petcare.update_updated_at();
 
 CREATE INDEX idx_pets_owner ON pets(owner_id);
 
--- === Resto de tablas (idénticas al diseño original) ===
-CREATE TABLE pet_photos (
+-- === Tabla: fotos de mascotas ===
+CREATE TABLE IF NOT EXISTS pet_photos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pet_id UUID NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
     file_name TEXT,
@@ -79,10 +79,17 @@ CREATE TABLE pet_photos (
     mime_type TEXT,
     url TEXT,
     data BYTEA,
-    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE vaccinations (
+CREATE TRIGGER trg_pet_photos_updated_at
+BEFORE UPDATE ON pet_photos
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Tabla: vacunas ===
+CREATE TABLE IF NOT EXISTS vaccinations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pet_id UUID NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
     vaccine_name TEXT NOT NULL,
@@ -93,10 +100,17 @@ CREATE TABLE vaccinations (
     veterinarian TEXT,
     notes TEXT,
     proof_document_id UUID REFERENCES pet_photos(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE dewormings (
+CREATE TRIGGER trg_vaccinations_updated_at
+BEFORE UPDATE ON vaccinations
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Tabla: desparasitaciones ===
+CREATE TABLE IF NOT EXISTS dewormings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pet_id UUID NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
     medication TEXT,
@@ -104,10 +118,17 @@ CREATE TABLE dewormings (
     next_due DATE,
     veterinarian TEXT,
     notes TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE vet_visits (
+CREATE TRIGGER trg_dewormings_updated_at
+BEFORE UPDATE ON dewormings
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Tabla: visitas veterinarias ===
+CREATE TABLE IF NOT EXISTS vet_visits (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pet_id UUID NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
     visit_date TIMESTAMPTZ NOT NULL,
@@ -117,10 +138,17 @@ CREATE TABLE vet_visits (
     follow_up_date TIMESTAMPTZ,
     veterinarian TEXT,
     documents_id UUID REFERENCES pet_photos(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE nutrition_plans (
+CREATE TRIGGER trg_vet_visits_updated_at
+BEFORE UPDATE ON vet_visits
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Tabla: planes de nutrición ===
+CREATE TABLE IF NOT EXISTS nutrition_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pet_id UUID NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
     name TEXT,
@@ -135,15 +163,22 @@ BEFORE UPDATE ON nutrition_plans
 FOR EACH ROW
 EXECUTE FUNCTION petcare.update_updated_at();
 
-CREATE TABLE meals (
+-- === Tabla: comidas ===
+CREATE TABLE IF NOT EXISTS meals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pet_id UUID NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
     plan_id UUID REFERENCES nutrition_plans(id),
     meal_time TIMESTAMPTZ NOT NULL,
     description TEXT,
     calories INT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TRIGGER trg_meals_updated_at
+BEFORE UPDATE ON meals
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
 
 -- === Tipos ENUM y recordatorios ===
 DO $$
@@ -153,7 +188,7 @@ BEGIN
     END IF;
 END$$;
 
-CREATE TABLE reminders (
+CREATE TABLE IF NOT EXISTS reminders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     pet_id UUID REFERENCES pets(id) ON DELETE CASCADE,
@@ -167,10 +202,16 @@ CREATE TABLE reminders (
     notify_by_email BOOLEAN NOT NULL DEFAULT TRUE,
     notify_in_app BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_notified_at TIMESTAMPTZ
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE notifications (
+CREATE TRIGGER trg_reminders_updated_at
+BEFORE UPDATE ON reminders
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Tabla: notificaciones ===
+CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reminder_id UUID REFERENCES reminders(id) ON DELETE SET NULL,
     owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -178,28 +219,50 @@ CREATE TABLE notifications (
     sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     method TEXT,
     status TEXT,
-    provider_response JSONB
+    provider_response JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE password_resets (
+CREATE TRIGGER trg_notifications_updated_at
+BEFORE UPDATE ON notifications
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Tabla: restablecimiento de contraseñas ===
+CREATE TABLE IF NOT EXISTS password_resets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     used BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE audit_logs (
+CREATE TRIGGER trg_password_resets_updated_at
+BEFORE UPDATE ON password_resets
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Tabla: logs de auditoría ===
+CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     actor_user_id UUID REFERENCES users(id),
     action TEXT NOT NULL,
     object_type TEXT,
     object_id UUID,
     meta JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TRIGGER trg_audit_logs_updated_at
+BEFORE UPDATE ON audit_logs
+FOR EACH ROW
+EXECUTE FUNCTION petcare.update_updated_at();
+
+-- === Vista: recordatorios próximos ===
 CREATE OR REPLACE VIEW upcoming_reminders AS
 SELECT r.*
 FROM reminders r
