@@ -43,10 +43,12 @@ async def get_current_user(
     if token_type != "access":
         raise InvalidTokenException()
     
-    # Verificar expiración
+    # Verificar expiración (exp ya viene como timestamp Unix)
     exp = payload.get("exp")
-    if exp and datetime.utcnow().timestamp() > exp:
-        raise TokenExpiredException()
+    if exp:
+        current_timestamp = datetime.utcnow().timestamp()
+        if current_timestamp > exp:
+            raise TokenExpiredException()
     
     # Obtener user_id del payload
     user_id: str = payload.get("sub")
@@ -97,7 +99,7 @@ async def get_current_verified_user(
 
 def require_role(required_role: str):
     """
-    Decorador para requerir un rol específico
+    Decorator para requerir un rol específico
     Uso: current_user: User = Depends(require_role("admin"))
     """
     async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
