@@ -167,3 +167,42 @@ def get_verification_token_dev(email: str, db: Session = Depends(get_db)):
         "email_verified": user.email_verified,
         "instructions": f"Usa este token en POST /auth/verify-email con el body: {{\"token\": \"{user.verification_token}\"}}"
     }
+
+@router.post("/dev/decode-token")
+def decode_token_dev(token: str):
+    """
+    ⚠️ SOLO PARA DESARROLLO ⚠️
+    Decodifica un JWT para ver su contenido
+    
+    **ELIMINAR EN PRODUCCIÓN**
+    """
+    from app.utils.security import decode_token
+    from datetime import datetime
+    
+    payload = decode_token(token)
+    
+    if not payload:
+        return {"error": "Token inválido o corrupto"}
+    
+    # Información adicional sobre expiración
+    exp = payload.get("exp")
+    iat = payload.get("iat")
+    current_time = datetime.utcnow().timestamp()
+    
+    result = {
+        "payload": payload,
+        "debug_info": {
+            "current_timestamp": current_time,
+            "issued_at_timestamp": iat,
+            "expires_at_timestamp": exp,
+            "is_expired": current_time > exp if exp else None,
+            "time_until_expiry_seconds": exp - current_time if exp else None
+        }
+    }
+    
+    if exp:
+        result["debug_info"]["issued_at_human"] = datetime.fromtimestamp(iat).isoformat() if iat else None
+        result["debug_info"]["expires_at_human"] = datetime.fromtimestamp(exp).isoformat()
+        result["debug_info"]["current_time_human"] = datetime.utcnow().isoformat()
+    
+    return result
