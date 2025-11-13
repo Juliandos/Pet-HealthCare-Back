@@ -145,3 +145,25 @@ def validate_token(current_user: User = Depends(get_current_active_user)):
         "email": current_user.email,
         "role": current_user.role
     }
+
+@router.get("/dev/get-verification-token/{email}")
+def get_verification_token_dev(email: str, db: Session = Depends(get_db)):
+    """
+    ⚠️ SOLO PARA DESARROLLO ⚠️
+    Obtiene el token de verificación de un usuario por email
+    
+    **ELIMINAR EN PRODUCCIÓN**
+    
+    - **email**: Email del usuario
+    """
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        from app.utils.exceptions import UserNotFoundException
+        raise UserNotFoundException()
+    
+    return {
+        "email": user.email,
+        "verification_token": user.verification_token,
+        "email_verified": user.email_verified,
+        "instructions": f"Usa este token en POST /auth/verify-email con el body: {{\"token\": \"{user.verification_token}\"}}"
+    }
