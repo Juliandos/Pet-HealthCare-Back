@@ -25,7 +25,7 @@ from app.config import settings
 class AuthController:
     """Controlador para operaciones de autenticación"""
     
-    @staticmethod
+    @staticmethod # Indica que el método no usa self ni cls
     def register_user(user_data: UserRegister, db: Session) -> User:
         """Registra un nuevo usuario"""
         
@@ -111,8 +111,8 @@ class AuthController:
             raise InactiveAccountException()
         
         # Opcional: Verificar si el email está verificado
-        # if not user.email_verified:
-        #     raise EmailNotVerifiedException()
+        if not user.email_verified:
+            raise EmailNotVerifiedException()
         
         # Login exitoso - resetear intentos fallidos
         user.failed_attempts = 0
