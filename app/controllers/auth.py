@@ -21,11 +21,12 @@ from app.utils.exceptions import (
     InvalidTokenException
 )
 from app.config import settings
+from app.services.email_service import EmailService  # ← NUEVO
 
 class AuthController:
     """Controlador para operaciones de autenticación"""
     
-    @staticmethod # Indica que el método no usa self ni cls
+    @staticmethod
     def register_user(user_data: UserRegister, db: Session) -> User:
         """Registra un nuevo usuario"""
         
@@ -40,6 +41,7 @@ class AuthController:
             raise UserAlreadyExistsException("username")
         
         # Crear nuevo usuario
+        verification_token = generate_verification_token()
         new_user = User(
             username=user_data.username,
             email=user_data.email,
@@ -47,8 +49,8 @@ class AuthController:
             full_name=user_data.full_name,
             phone=user_data.phone,
             timezone=user_data.timezone or "UTC",
-            verification_token=generate_verification_token(),
-            email_verified=False,  # Requerir verificación de email
+            verification_token=verification_token,
+            email_verified=False,
             is_active=True
         )
         
@@ -67,8 +69,17 @@ class AuthController:
         db.add(audit)
         db.commit()
         
-        # Aquí podrías enviar un email de verificación
-        # send_verification_email(new_user.email, new_user.verification_token)
+        # ← NUEVO: Enviar email de verificación
+        try:
+            EmailService.send_verification_email(
+                email=new_user.email,
+                username=new_user.username,
+                token=verification_token
+            )
+            print(f"✅ Email de verificación enviado a {new_user.email}")
+        except Exception as e:
+            print(f"⚠️ Error enviando email de verificación: {str(e)}")
+            # No fallar el registro si el email no se envía
         
         return new_user
     
@@ -110,7 +121,7 @@ class AuthController:
         if not user.is_active:
             raise InactiveAccountException()
         
-        # Opcional: Verificar si el email está verificado
+        # Verificar si el email está verificado
         if not user.email_verified:
             raise EmailNotVerifiedException()
         
@@ -229,8 +240,16 @@ class AuthController:
         db.add(password_reset)
         db.commit()
         
-        # Aquí enviarías el email con el link de reseteo
-        # send_password_reset_email(user.email, reset_token)
+        # ← NUEVO: Enviar email de reseteo
+        try:
+            EmailService.send_password_reset_email(
+                email=user.email,
+                username=user.username,
+                token=reset_token
+            )
+            print(f"✅ Email de reseteo enviado a {user.email}")
+        except Exception as e:
+            print(f"⚠️ Error enviando email de reseteo: {str(e)}")
         
         return "Si el email existe, recibirás un link de reseteo"
     
