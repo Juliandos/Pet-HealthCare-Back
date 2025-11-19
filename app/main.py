@@ -18,7 +18,8 @@ from app.routes import (
     pet_photos,
     users,
     audit_logs,
-    password_resets
+    password_resets,
+    images
 )
 
 # Crear las tablas en la base de datos
@@ -61,6 +62,7 @@ app.include_router(pet_photos.router)        # Fotos de mascotas
 app.include_router(users.router)             # Usuarios
 app.include_router(audit_logs.router)       # Registros de auditoría
 app.include_router(password_resets.router)   # Reseteos de contraseña
+app.include_router(images.router)           # Imágenes
 
 @app.get("/")
 def root():

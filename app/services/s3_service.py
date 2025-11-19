@@ -6,7 +6,7 @@ import boto3
 import io
 import uuid
 from typing import Optional, BinaryIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image
 from botocore.exceptions import ClientError
 from app.config import settings
@@ -106,4 +106,215 @@ class S3Service:
         Sube una imagen a S3
         
         Args:
-            file_content: Contenido binario
+            file_content: Contenido binario del archivo
+            filename: Nombre original del archivo
+            pet_id: ID de la mascota
+            optimize: Si debe optimizar la imagen
+        
+        Returns:
+            Dict con información del archivo subido:
+            {
+                "url": "https://...",
+                "key": "pets/uuid/filename.jpg",
+                "size": 12345,
+                "bucket": "bucket-name"
+            }
+        """
+        # Validar imagen
+        is_valid, error = self.validate_image(file_content, filename)
+        if not is_valid:
+            print(f"❌ Imagen inválida: {error}")
+            return None
+        
+        # Optimizar si está habilitado
+        if optimize:
+            file_content = self.optimize_image(file_content)
+        
+        # Generar nombre único
+        extension = filename.lower().split('.')[-1]
+        unique_filename = f"{uuid.uuid4()}.{extension}"
+        s3_key = f"pets/{pet_id}/{unique_filename}"
+        
+        try:
+            # Subir a S3
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=s3_key,
+                Body=file_content,
+                ContentType=f"image/{extension}",
+                Metadata={
+                    'pet_id': pet_id,
+                    'original_filename': filename,
+                    'uploaded_at': datetime.utcnow().isoformat()
+                }
+            )
+            
+            # Generar URL
+            url = f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{s3_key}"
+            
+            print(f"✅ Imagen subida exitosamente: {url}")
+            
+            return {
+                "url": url,
+                "key": s3_key,
+                "size": len(file_content),
+                "bucket": self.bucket_name
+            }
+        
+        except ClientError as e:
+            print(f"❌ Error subiendo a S3: {str(e)}")
+            return None
+    
+    def delete_image(self, s3_key: str) -> bool:
+        """
+        Elimina una imagen de S3
+        
+        Args:
+            s3_key: Clave del objeto en S3 (ej: "pets/uuid/image.jpg")
+        
+        Returns:
+            True si se eliminó correctamente
+        """
+        try:
+            self.s3_client.delete_object(
+                Bucket=self.bucket_name,
+                Key=s3_key
+            )
+            print(f"✅ Imagen eliminada: {s3_key}")
+            return True
+        except ClientError as e:
+            print(f"❌ Error eliminando de S3: {str(e)}")
+            return False
+    
+    def get_presigned_url(
+        self,
+        s3_key: str,
+        expiration: int = 3600
+    ) -> Optional[str]:
+        """
+        Genera una URL firmada temporalmente para acceso privado
+        
+        Args:
+            s3_key: Clave del objeto en S3
+            expiration: Tiempo de expiración en segundos (default: 1 hora)
+        
+        Returns:
+            URL firmada o None si hay error
+        """
+        try:
+            url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': s3_key
+                },
+                ExpiresIn=expiration
+            )
+            return url
+        except ClientError as e:
+            print(f"❌ Error generando URL firmada: {str(e)}")
+            return None
+    
+    def upload_pet_profile_photo(
+        self,
+        file_content: bytes,
+        filename: str,
+        pet_id: str
+    ) -> Optional[dict]:
+        """
+        Sube la foto de perfil de una mascota
+        
+        Args:
+            file_content: Contenido binario del archivo
+            filename: Nombre original del archivo
+            pet_id: ID de la mascota
+        
+        Returns:
+            Dict con información del archivo subido
+        """
+        return self.upload_image(file_content, filename, pet_id, optimize=True)
+    
+    def upload_pet_gallery_photo(
+        self,
+        file_content: bytes,
+        filename: str,
+        pet_id: str
+    ) -> Optional[dict]:
+        """
+        Sube una foto a la galería de una mascota
+        
+        Args:
+            file_content: Contenido binario del archivo
+            filename: Nombre original del archivo
+            pet_id: ID de la mascota
+        
+        Returns:
+            Dict con información del archivo subido
+        """
+        return self.upload_image(file_content, filename, pet_id, optimize=True)
+    
+    def list_pet_photos(self, pet_id: str) -> list[dict]:
+        """
+        Lista todas las fotos de una mascota
+        
+        Args:
+            pet_id: ID de la mascota
+        
+        Returns:
+            Lista de diccionarios con información de las fotos
+        """
+        try:
+            prefix = f"pets/{pet_id}/"
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix=prefix
+            )
+            
+            photos = []
+            if 'Contents' in response:
+                for obj in response['Contents']:
+                    photos.append({
+                        'key': obj['Key'],
+                        'size': obj['Size'],
+                        'last_modified': obj['LastModified'].isoformat(),
+                        'url': f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{obj['Key']}"
+                    })
+            
+            return photos
+        except ClientError as e:
+            print(f"❌ Error listando fotos: {str(e)}")
+            return []
+    
+    def delete_pet_photos(self, pet_id: str) -> bool:
+        """
+        Elimina todas las fotos de una mascota
+        
+        Args:
+            pet_id: ID de la mascota
+        
+        Returns:
+            True si se eliminaron correctamente
+        """
+        try:
+            # Listar todas las fotos
+            photos = self.list_pet_photos(pet_id)
+            
+            if not photos:
+                return True
+            
+            # Eliminar cada foto
+            objects_to_delete = [{'Key': photo['key']} for photo in photos]
+            
+            self.s3_client.delete_objects(
+                Bucket=self.bucket_name,
+                Delete={'Objects': objects_to_delete}
+            )
+            
+            print(f"✅ Eliminadas {len(photos)} fotos de mascota {pet_id}")
+            return True
+        except ClientError as e:
+            print(f"❌ Error eliminando fotos: {str(e)}")
+            return False
+
+# Instancia global del servicio
+s3_service = S3Service()
