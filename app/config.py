@@ -34,5 +34,19 @@ class Settings:
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USER: str = os.getenv("SMTP_USER", "")
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    
+    # AWS S3 Configuration
+    AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
+    AWS_S3_BUCKET: str = os.getenv("AWS_S3_BUCKET", "pet-healthcare-images")
+    AWS_S3_ENDPOINT_URL: str = os.getenv("AWS_S3_ENDPOINT_URL", "")  # Para S3 compatible
+    
+    # Storage Configuration
+    MAX_IMAGE_SIZE_MB: int = int(os.getenv("MAX_IMAGE_SIZE_MB", "5"))
+    ALLOWED_IMAGE_EXTENSIONS: list = os.getenv(
+        "ALLOWED_IMAGE_EXTENSIONS", 
+        "jpg,jpeg,png,gif,webp"
+    ).split(",")
 
 settings = Settings()
