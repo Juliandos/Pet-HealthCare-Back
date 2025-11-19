@@ -16,7 +16,8 @@ from app.routes import (
     reminders,
     notifications,
     pet_photos,
-    users
+    users,
+    audit_logs
 )
 
 # Crear las tablas en la base de datos
@@ -57,6 +58,7 @@ app.include_router(reminders.router)         # Recordatorios
 app.include_router(notifications.router)     # Notificaciones
 app.include_router(pet_photos.router)        # Fotos de mascotas
 app.include_router(users.router)             # Usuarios
+app.include_router(audit_logs.router)       # Registros de auditoría
 
 @app.get("/")
 def root():
