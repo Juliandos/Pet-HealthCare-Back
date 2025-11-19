@@ -21,7 +21,7 @@ from app.utils.exceptions import (
     InvalidTokenException
 )
 from app.config import settings
-from app.services.email_service import EmailService  # ← NUEVO
+from app.services.email_service import EmailService
 
 class AuthController:
     """Controlador para operaciones de autenticación"""
@@ -35,15 +35,28 @@ class AuthController:
         if existing_user:
             raise UserAlreadyExistsException("email")
         
-        # Verificar si el username ya existe
-        existing_username = db.query(User).filter(User.username == user_data.username).first()
-        if existing_username:
-            raise UserAlreadyExistsException("username")
+        # Verificar si el username ya existe (solo si se proporcionó)
+        if user_data.username:
+            existing_username = db.query(User).filter(User.username == user_data.username).first()
+            if existing_username:
+                raise UserAlreadyExistsException("username")
+        
+        # Generar username automático si no se proporcionó
+        username = user_data.username
+        if not username:
+            # Generar username basado en email (antes del @)
+            base_username = user_data.email.split('@')[0]
+            # Si ya existe, agregar un número aleatorio
+            username = base_username
+            counter = 1
+            while db.query(User).filter(User.username == username).first():
+                username = f"{base_username}{counter}"
+                counter += 1
         
         # Crear nuevo usuario
         verification_token = generate_verification_token()
         new_user = User(
-            username=user_data.username,
+            username=username,
             email=user_data.email,
             hashed_password=hash_password(user_data.password),
             full_name=user_data.full_name,
@@ -69,7 +82,7 @@ class AuthController:
         db.add(audit)
         db.commit()
         
-        # ← NUEVO: Enviar email de verificación
+        # Enviar email de verificación
         try:
             EmailService.send_verification_email(
                 email=new_user.email,
@@ -240,7 +253,7 @@ class AuthController:
         db.add(password_reset)
         db.commit()
         
-        # ← NUEVO: Enviar email de reseteo
+        # Enviar email de reseteo
         try:
             EmailService.send_password_reset_email(
                 email=user.email,

@@ -2,13 +2,13 @@ from pydantic import BaseModel, EmailStr, Field, validator
 import re
 
 class UserRegister(BaseModel):
-    """Schema para registro de usuario"""
-    username: str = Field(..., min_length=3, max_length=50)
+    """Schema para registro de usuario - Solo email y password son requeridos"""
     email: EmailStr
     password: str = Field(..., min_length=8)
-    full_name: str = Field(..., min_length=2, max_length=100)
+    username: str | None = Field(None, min_length=3, max_length=50)
+    full_name: str | None = Field(None, min_length=2, max_length=100)
     phone: str | None = None
-    timezone: str | None = "UTC"
+    timezone: str | None = None
     
     @validator('password')
     def validate_password(cls, v):
@@ -24,7 +24,7 @@ class UserRegister(BaseModel):
     
     @validator('username')
     def validate_username(cls, v):
-        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+        if v and not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError('El username solo puede contener letras, números, guiones y guiones bajos')
         return v
 
@@ -72,9 +72,9 @@ class EmailVerification(BaseModel):
 class UserProfile(BaseModel):
     """Schema para perfil de usuario"""
     id: str
-    username: str
+    username: str | None
     email: str
-    full_name: str
+    full_name: str | None
     phone: str | None
     timezone: str | None
     role: str

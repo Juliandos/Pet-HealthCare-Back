@@ -21,12 +21,35 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     """
     Registra un nuevo usuario en el sistema
     
-    - **username**: Nombre de usuario único (solo letras, números, guiones)
+    **Campos requeridos:**
     - **email**: Email único del usuario
     - **password**: Contraseña (mínimo 8 caracteres, debe incluir mayúsculas, minúsculas y números)
+    
+    **Campos opcionales:**
+    - **username**: Nombre de usuario único (se genera automáticamente si no se proporciona)
     - **full_name**: Nombre completo del usuario
-    - **phone**: Teléfono (opcional)
-    - **timezone**: Zona horaria (opcional, por defecto UTC)
+    - **phone**: Teléfono
+    - **timezone**: Zona horaria (por defecto UTC)
+    
+    **Ejemplo mínimo:**
+    ```json
+    {
+        "email": "usuario@ejemplo.com",
+        "password": "SecurePass123"
+    }
+    ```
+    
+    **Ejemplo completo:**
+    ```json
+    {
+        "email": "usuario@ejemplo.com",
+        "password": "SecurePass123",
+        "username": "usuario123",
+        "full_name": "Nombre Completo",
+        "phone": "+57 300 123 4567",
+        "timezone": "America/Bogota"
+    }
+    ```
     """
     user = AuthController.register_user(user_data, db)
     return UserProfile(
@@ -115,7 +138,7 @@ def reset_password(reset_data: PasswordReset, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserProfile)
 def get_current_user_profile(current_user: User = Depends(get_current_active_user)):
     """
-    Obtiene el perfil del usuario autenticado
+    Obtiene el perfil del usuario autenticado actual
     
     Requiere estar autenticado con un access token válido
     """
