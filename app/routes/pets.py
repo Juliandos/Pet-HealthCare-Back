@@ -51,7 +51,7 @@ def get_all_my_pets(
             age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
             weight_kg=pet.weight_kg,
             sex=pet.sex,
-            photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
+            photo_url=get_pet_profile_photo(db, pet.id),  # ✅ Consultado
             notes=pet.notes,
             created_at=pet.created_at.isoformat(),
             updated_at=pet.updated_at.isoformat()
@@ -115,7 +115,7 @@ def get_pet_by_id(
         age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
+        photo_url=get_pet_profile_photo(db, pet.id),  # ✅ Consultado
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat()
@@ -159,7 +159,7 @@ def create_pet(
         age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
+        photo_url=get_pet_profile_photo(db, pet.id),  # ✅ Consultado
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat()
@@ -194,7 +194,7 @@ def update_pet(
         age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
+        photo_url=get_pet_profile_photo(db, pet.id),  # ✅ Consultado
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat()
@@ -335,7 +335,7 @@ def search_pets(
             age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
             weight_kg=pet.weight_kg,
             sex=pet.sex,
-            photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
+            photo_url=get_pet_profile_photo(db, pet.id),  # ✅ Consultado
             notes=pet.notes,
             created_at=pet.created_at.isoformat(),
             updated_at=pet.updated_at.isoformat()

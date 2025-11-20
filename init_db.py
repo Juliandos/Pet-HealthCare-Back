@@ -71,6 +71,24 @@ def init_database():
         Base.metadata.create_all(bind=engine)
         print("✅ Tablas creadas exitosamente")
         
+        # 🆕 EJECUTAR MIGRACIONES DE ALEMBIC
+        print("🔄 Ejecutando migraciones de Alembic...")
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["alembic", "upgrade", "head"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            print(result.stdout)
+            print("✅ Migraciones ejecutadas exitosamente")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Error ejecutando migraciones: {e.stderr}")
+            print("Continuando sin migraciones...")
+        except FileNotFoundError:
+            print("⚠️ Alembic no encontrado, saltando migraciones...")
+        
         # Crear vista upcoming_reminders
         with temp_engine.connect() as conn:
             print("👁️ Creando vistas...")
