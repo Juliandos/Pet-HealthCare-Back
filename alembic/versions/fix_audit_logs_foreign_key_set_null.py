@@ -1,4 +1,4 @@
-"""Fix audit_logs foreign key to allow SET NULL on delete
+"""Fix audit_logs and password_resets foreign keys for user deletion
 
 Revision ID: fix_audit_logs_fk
 Revises: 46e6678291ad
@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Primero eliminar la constraint existente
+    # 1. Corregir audit_logs: permitir NULL cuando se elimina el usuario
     op.drop_constraint(
         'audit_logs_actor_user_id_fkey',
         'audit_logs',
@@ -27,7 +27,6 @@ def upgrade() -> None:
         schema='petcare'
     )
     
-    # Crear la nueva constraint con ON DELETE SET NULL
     op.create_foreign_key(
         'audit_logs_actor_user_id_fkey',
         'audit_logs',
@@ -38,11 +37,30 @@ def upgrade() -> None:
         source_schema='petcare',
         referent_schema='petcare'
     )
+    
+    # 2. Corregir password_resets: eliminar en cascada cuando se elimina el usuario
+    op.drop_constraint(
+        'password_resets_user_id_fkey',
+        'password_resets',
+        type_='foreignkey',
+        schema='petcare'
+    )
+    
+    op.create_foreign_key(
+        'password_resets_user_id_fkey',
+        'password_resets',
+        'users',
+        ['user_id'],
+        ['id'],
+        ondelete='CASCADE',
+        source_schema='petcare',
+        referent_schema='petcare'
+    )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    # Eliminar la constraint con SET NULL
+    # Revertir audit_logs
     op.drop_constraint(
         'audit_logs_actor_user_id_fkey',
         'audit_logs',
@@ -50,12 +68,29 @@ def downgrade() -> None:
         schema='petcare'
     )
     
-    # Recrear la constraint sin ON DELETE (comportamiento por defecto)
     op.create_foreign_key(
         'audit_logs_actor_user_id_fkey',
         'audit_logs',
         'users',
         ['actor_user_id'],
+        ['id'],
+        source_schema='petcare',
+        referent_schema='petcare'
+    )
+    
+    # Revertir password_resets
+    op.drop_constraint(
+        'password_resets_user_id_fkey',
+        'password_resets',
+        type_='foreignkey',
+        schema='petcare'
+    )
+    
+    op.create_foreign_key(
+        'password_resets_user_id_fkey',
+        'password_resets',
+        'users',
+        ['user_id'],
         ['id'],
         source_schema='petcare',
         referent_schema='petcare'
