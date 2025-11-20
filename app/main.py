@@ -15,7 +15,6 @@ from app.routes import (
     meals,
     reminders,
     notifications,
-    pet_photos,
     users,
     audit_logs,
     password_resets,
@@ -58,7 +57,6 @@ app.include_router(nutrition_plans.router)   # Planes de nutrición
 app.include_router(meals.router)             # Comidas
 app.include_router(reminders.router)         # Recordatorios
 app.include_router(notifications.router)     # Notificaciones
-app.include_router(pet_photos.router)        # Fotos de mascotas
 app.include_router(users.router)             # Usuarios
 app.include_router(audit_logs.router)       # Registros de auditoría
 app.include_router(password_resets.router)   # Reseteos de contraseña
