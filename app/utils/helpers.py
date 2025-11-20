@@ -1,6 +1,3 @@
-"""
-Funciones helper para cálculos y consultas reutilizables
-"""
 from datetime import date
 from typing import Optional
 from sqlalchemy.orm import Session

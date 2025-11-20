@@ -9,17 +9,14 @@ class PetBase(BaseModel):
     species: str = Field(..., min_length=1, max_length=50, description="Especie (perro, gato, ave, etc.)")
     breed: Optional[str] = Field(None, max_length=100, description="Raza de la mascota")
     birth_date: Optional[date] = Field(None, description="Fecha de nacimiento")
-    # age_years: Optional[int] = Field(None, ge=0, le=50, description="Edad en años")
     weight_kg: Optional[Decimal] = Field(None, ge=0, le=999.99, description="Peso en kilogramos")
     sex: Optional[str] = Field(None, max_length=20, description="Sexo (Macho, Hembra, Otro)")
-    # photo_url: Optional[str] = Field(None, description="URL de la foto")
     notes: Optional[str] = Field(None, description="Notas adicionales")
     
     @validator('species')
     def validate_species(cls, v):
         valid_species = ['perro', 'gato', 'ave', 'pez', 'roedor', 'reptil', 'otro']
         if v.lower() not in valid_species:
-            # Permitir cualquier valor pero sugerir los válidos
             pass
         return v.capitalize()
     
@@ -42,10 +39,8 @@ class PetUpdate(BaseModel):
     species: Optional[str] = Field(None, min_length=1, max_length=50)
     breed: Optional[str] = Field(None, max_length=100)
     birth_date: Optional[date] = None
-    age_years: Optional[int] = Field(None, ge=0, le=50)
     weight_kg: Optional[Decimal] = Field(None, ge=0, le=999.99)
     sex: Optional[str] = Field(None, max_length=20)
-    photo_url: Optional[str] = None
     notes: Optional[str] = None
     
     @validator('species')
@@ -67,8 +62,8 @@ class PetResponse(PetBase):
     """Schema para respuesta de mascota"""
     id: str
     owner_id: str
-    age_years: Optional[int] = None  # ← AGREGADO (calculado)
-    photo_url: Optional[str] = None  # ← AGREGADO (consultado)
+    age_years: Optional[int] = None  # ← Calculado dinámicamente
+    photo_url: Optional[str] = None  # ← Obtenido de pet_photos
     created_at: str
     updated_at: str
     
@@ -80,13 +75,36 @@ class PetResponse(PetBase):
             Decimal: lambda v: float(v) if v else None
         }
 
-class PetWithStats(PetResponse):
+class PetWithStats(BaseModel):
     """Schema de mascota con estadísticas"""
+    id: str
+    owner_id: str
+    name: str
+    species: str
+    breed: Optional[str]
+    birth_date: Optional[date]
+    age_years: Optional[int]  # Calculado
+    weight_kg: Optional[Decimal]
+    sex: Optional[str]
+    photo_url: Optional[str]  # Obtenido de pet_photos
+    notes: Optional[str]
+    created_at: str
+    updated_at: str
+    
+    # Estadísticas
     total_vaccinations: int = 0
     total_dewormings: int = 0
     total_vet_visits: int = 0
     total_meals: int = 0
     active_reminders: int = 0
+    
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+            date: lambda v: v.isoformat() if v else None,
+            Decimal: lambda v: float(v) if v else None
+        }
     
 class PetSummary(BaseModel):
     """Schema resumido de mascota (para listados)"""
@@ -94,8 +112,8 @@ class PetSummary(BaseModel):
     name: str
     species: str
     breed: Optional[str]
-    age_years: Optional[int]
-    photo_url: Optional[str]
+    age_years: Optional[int]  # Calculado
+    photo_url: Optional[str]  # Obtenido de pet_photos
     
     class Config:
         from_attributes = True
