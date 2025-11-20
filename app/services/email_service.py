@@ -10,14 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Inicializar cliente de Resend si está configurado
-resend_client = None
-if settings.EMAIL_PROVIDER == "resend" and settings.RESEND_API_KEY:
-    try:
-        resend_client = Resend(api_key=settings.RESEND_API_KEY)
-    except Exception as e:
-        print(f"⚠️ Error inicializando Resend: {str(e)}")
-        resend_client = None
+# Cliente de Resend se inicializará cuando sea necesario
 
 class EmailService:
     """Servicio para envío de emails con múltiples proveedores"""
@@ -356,26 +349,46 @@ class EmailService:
         text_content: str
     ) -> bool:
         """Envía email usando Resend"""
-        if not resend_client:
-            print(f"❌ Resend no está configurado correctamente. Verifica RESEND_API_KEY en las variables de entorno.")
+        # Verificar que Resend esté configurado
+        if not settings.RESEND_API_KEY:
+            print(f"❌ RESEND_API_KEY no está configurada en las variables de entorno.")
+            return False
+        
+        # Inicializar cliente de Resend
+        try:
+            resend_client = Resend(api_key=settings.RESEND_API_KEY)
+        except Exception as e:
+            print(f"❌ Error inicializando cliente de Resend: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return False
         
         try:
+            # Formatear el email "from" - Resend acepta "Name <email@domain.com>" o solo "email@domain.com"
+            from_email = settings.EMAIL_FROM
+            if settings.EMAIL_FROM_NAME:
+                from_email = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+            
             params = {
-                "from": f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>",
+                "from": from_email,
                 "to": [to_email],
                 "subject": subject,
                 "html": html_content,
                 "text": text_content
             }
             
+            print(f"📧 Intentando enviar email via Resend:")
+            print(f"   From: {from_email}")
+            print(f"   To: {to_email}")
+            print(f"   Subject: {subject}")
+            
             response = resend_client.emails.send(params)
-            print(f"✅ Email enviado via Resend: {response}")
+            print(f"✅ Email enviado via Resend exitosamente: {response}")
             return True
         except Exception as e:
-            print(f"❌ Error con Resend: {str(e)}")
+            print(f"❌ Error enviando email con Resend: {str(e)}")
             import traceback
-            print(f"Traceback: {traceback.format_exc()}")
+            print(f"Traceback completo: {traceback.format_exc()}")
             return False
     
     @staticmethod
