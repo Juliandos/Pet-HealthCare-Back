@@ -1,5 +1,5 @@
 # app/controllers/pets.py
-
+from app.utils.helpers import calculate_age_years, get_pet_profile_photo
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -224,7 +224,7 @@ class PetController:
         
         # Si es foto de perfil, actualizar la mascota
         if is_profile_photo:
-            pet.photo_url = result['url']
+            # pet.photo_url = result['url']
             db.commit()
             db.refresh(pet)
         

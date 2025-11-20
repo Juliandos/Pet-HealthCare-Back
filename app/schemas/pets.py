@@ -6,22 +6,14 @@ from decimal import Decimal
 class PetBase(BaseModel):
     """Schema base para mascota"""
     name: str = Field(..., min_length=1, max_length=100)
-    species: str = Field(..., min_length=1, max_length=50, 
-                         description="Especie (perro, gato, ave, etc.)")
-    breed: Optional[str] = Field(None, max_length=100, 
-                                  description="Raza de la mascota")
-    birth_date: Optional[date] = Field(None, 
-                                        description="Fecha de nacimiento")
-    age_years: Optional[int] = Field(None, ge=0, le=50, 
-                                      description="Edad en años")
-    weight_kg: Optional[Decimal] = Field(None, ge=0, le=999.99, 
-                                          description="Peso en kilogramos")
-    sex: Optional[str] = Field(None, max_length=20, 
-                                description="Sexo (Macho, Hembra, Otro)")
-    photo_url: Optional[str] = Field(None, 
-                                      description="URL de la foto")
-    notes: Optional[str] = Field(None, 
-                                  description="Notas adicionales")
+    species: str = Field(..., min_length=1, max_length=50, description="Especie (perro, gato, ave, etc.)")
+    breed: Optional[str] = Field(None, max_length=100, description="Raza de la mascota")
+    birth_date: Optional[date] = Field(None, description="Fecha de nacimiento")
+    # age_years: Optional[int] = Field(None, ge=0, le=50, description="Edad en años")
+    weight_kg: Optional[Decimal] = Field(None, ge=0, le=999.99, description="Peso en kilogramos")
+    sex: Optional[str] = Field(None, max_length=20, description="Sexo (Macho, Hembra, Otro)")
+    # photo_url: Optional[str] = Field(None, description="URL de la foto")
+    notes: Optional[str] = Field(None, description="Notas adicionales")
     
     @validator('species')
     def validate_species(cls, v):
@@ -75,6 +67,8 @@ class PetResponse(PetBase):
     """Schema para respuesta de mascota"""
     id: str
     owner_id: str
+    age_years: Optional[int] = None  # ← AGREGADO (calculado)
+    photo_url: Optional[str] = None  # ← AGREGADO (consultado)
     created_at: str
     updated_at: str
     

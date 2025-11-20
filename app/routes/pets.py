@@ -1,3 +1,4 @@
+from app.utils.helpers import calculate_age_years, get_pet_profile_photo
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -47,10 +48,10 @@ def get_all_my_pets(
             species=pet.species,
             breed=pet.breed,
             birth_date=pet.birth_date,
-            age_years=pet.age_years,
+            age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
             weight_kg=pet.weight_kg,
             sex=pet.sex,
-            photo_url=pet.photo_url,
+            photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
             notes=pet.notes,
             created_at=pet.created_at.isoformat(),
             updated_at=pet.updated_at.isoformat()
@@ -111,10 +112,10 @@ def get_pet_by_id(
         species=pet.species,
         breed=pet.breed,
         birth_date=pet.birth_date,
-        age_years=pet.age_years,
+        age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        photo_url=pet.photo_url,
+        photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat()
@@ -155,10 +156,10 @@ def create_pet(
         species=pet.species,
         breed=pet.breed,
         birth_date=pet.birth_date,
-        age_years=pet.age_years,
+        age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        photo_url=pet.photo_url,
+        photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat()
@@ -190,10 +191,10 @@ def update_pet(
         species=pet.species,
         breed=pet.breed,
         birth_date=pet.birth_date,
-        age_years=pet.age_years,
+        age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        photo_url=pet.photo_url,
+        photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat()
@@ -284,10 +285,10 @@ def get_pet_with_statistics(
         species=pet.species,
         breed=pet.breed,
         birth_date=pet.birth_date,
-        age_years=pet.age_years,
+        # age_years=pet.age_years,
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        photo_url=pet.photo_url,
+        # photo_url=pet.photo_url,
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat(),
@@ -331,10 +332,10 @@ def search_pets(
             species=pet.species,
             breed=pet.breed,
             birth_date=pet.birth_date,
-            age_years=pet.age_years,
+            age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
             weight_kg=pet.weight_kg,
             sex=pet.sex,
-            photo_url=pet.photo_url,
+            photo_url=get_pet_profile_photo(db, pet_id),  # ✅ Consultado
             notes=pet.notes,
             created_at=pet.created_at.isoformat(),
             updated_at=pet.updated_at.isoformat()
