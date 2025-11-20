@@ -323,6 +323,10 @@ class EmailService:
                 return EmailService._send_with_resend(
                     to_email, subject, html_content, text_content
                 )
+            elif settings.EMAIL_PROVIDER == "sendgrid":
+                return EmailService._send_with_sendgrid(
+                    to_email, subject, html_content, text_content
+                )
             elif settings.EMAIL_PROVIDER == "smtp":
                 return EmailService._send_with_smtp(
                     to_email, subject, html_content, text_content
@@ -400,6 +404,81 @@ class EmailService:
                 
         except Exception as e:
             print(f"❌ Error enviando email con Resend: {str(e)}")
+            import traceback
+            print(f"Traceback completo: {traceback.format_exc()}")
+            return False
+    
+    @staticmethod
+    def _send_with_sendgrid(
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: str
+    ) -> bool:
+        """Envía email usando SendGrid (gratis, 100 emails/día, sin dominio requerido)"""
+        # Verificar que SendGrid esté configurado
+        if not settings.SENDGRID_API_KEY:
+            print(f"❌ SENDGRID_API_KEY no está configurada en las variables de entorno.")
+            return False
+        
+        try:
+            import requests
+            
+            # Formatear el email "from"
+            from_email = settings.EMAIL_FROM
+            if settings.EMAIL_FROM_NAME:
+                from_email = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+            
+            headers = {
+                "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            # SendGrid usa un formato diferente
+            data = {
+                "personalizations": [{
+                    "to": [{"email": to_email}]
+                }],
+                "from": {
+                    "email": settings.EMAIL_FROM,
+                    "name": settings.EMAIL_FROM_NAME
+                },
+                "subject": subject,
+                "content": [
+                    {
+                        "type": "text/plain",
+                        "value": text_content
+                    },
+                    {
+                        "type": "text/html",
+                        "value": html_content
+                    }
+                ]
+            }
+            
+            print(f"📧 Intentando enviar email via SendGrid:")
+            print(f"   From: {from_email}")
+            print(f"   To: {to_email}")
+            print(f"   Subject: {subject}")
+            
+            response = requests.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers=headers,
+                json=data,
+                timeout=10
+            )
+            
+            # Verificar respuesta
+            if response.status_code == 202:
+                print(f"✅ Email enviado via SendGrid exitosamente")
+                return True
+            else:
+                error_msg = f"Error HTTP {response.status_code}: {response.text}"
+                print(f"❌ {error_msg}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error enviando email con SendGrid: {str(e)}")
             import traceback
             print(f"Traceback completo: {traceback.format_exc()}")
             return False

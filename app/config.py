@@ -29,6 +29,9 @@ class Settings:
     EMAIL_FROM_NAME: str = os.getenv("EMAIL_FROM_NAME", "Pet HealthCare")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     
+    # SendGrid Configuration (gratis, 100 emails/día, sin dominio requerido)
+    SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")
+    
     # Gmail SMTP (alternativa)
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
