@@ -354,22 +354,21 @@ class EmailService:
             print(f"❌ RESEND_API_KEY no está configurada en las variables de entorno.")
             return False
         
-        # Inicializar cliente de Resend
-        try:
-            resend_client = Resend(api_key=settings.RESEND_API_KEY)
-        except Exception as e:
-            print(f"❌ Error inicializando cliente de Resend: {str(e)}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
-            return False
-        
         try:
             # Formatear el email "from" - Resend acepta "Name <email@domain.com>" o solo "email@domain.com"
             from_email = settings.EMAIL_FROM
             if settings.EMAIL_FROM_NAME:
                 from_email = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
             
-            params = {
+            # Usar la API HTTP de Resend directamente (más confiable que el SDK)
+            import requests
+            
+            headers = {
+                "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
                 "from": from_email,
                 "to": [to_email],
                 "subject": subject,
@@ -382,9 +381,23 @@ class EmailService:
             print(f"   To: {to_email}")
             print(f"   Subject: {subject}")
             
-            response = resend_client.emails.send(params)
-            print(f"✅ Email enviado via Resend exitosamente: {response}")
-            return True
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers=headers,
+                json=data,
+                timeout=10
+            )
+            
+            # Verificar respuesta
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ Email enviado via Resend exitosamente: {result}")
+                return True
+            else:
+                error_msg = f"Error HTTP {response.status_code}: {response.text}"
+                print(f"❌ {error_msg}")
+                return False
+                
         except Exception as e:
             print(f"❌ Error enviando email con Resend: {str(e)}")
             import traceback
