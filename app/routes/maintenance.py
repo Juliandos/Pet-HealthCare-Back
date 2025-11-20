@@ -10,6 +10,51 @@ from app.models import User
 
 router = APIRouter(prefix="/maintenance", tags=["Mantenimiento"])
 
+@router.post("/clean-corrupt-data")
+def clean_corrupt_data(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """
+    🧹 Limpia registros corruptos de password_resets
+    ⚠️ Solo accesible por administradores
+    """
+    try:
+        # Buscar registros corruptos
+        check = db.execute(text("""
+            SELECT id, user_id, token, created_at
+            FROM petcare.password_resets
+            WHERE user_id IS NULL;
+        """))
+        
+        corrupt_records = []
+        for row in check:
+            corrupt_records.append({
+                "id": str(row.id),
+                "user_id": row.user_id,
+                "token": row.token,
+                "created_at": str(row.created_at)
+            })
+        
+        # Eliminar registros corruptos
+        result = db.execute(text("DELETE FROM petcare.password_resets WHERE user_id IS NULL;"))
+        db.commit()
+        deleted_count = result.rowcount
+        
+        return {
+            "success": True,
+            "message": f"✅ Se eliminaron {deleted_count} registros corruptos",
+            "corrupt_records_found": corrupt_records,
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al limpiar datos corruptos: {str(e)}"
+        )
+
 @router.post("/fix-foreign-keys")
 def fix_foreign_keys(
     current_user: User = Depends(require_role("admin")),
