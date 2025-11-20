@@ -237,7 +237,7 @@ class AuditLog(Base):
     __table_args__ = {'schema': 'petcare'}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    actor_user_id = Column(UUID(as_uuid=True), ForeignKey("petcare.users.id"))
+    actor_user_id = Column(UUID(as_uuid=True), ForeignKey("petcare.users.id", ondelete="SET NULL"))
     action = Column(String, nullable=False)
     object_type = Column(String)
     object_id = Column(UUID(as_uuid=True))

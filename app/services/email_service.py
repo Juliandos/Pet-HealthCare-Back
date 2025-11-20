@@ -2,7 +2,7 @@
 Servicio de envío de emails
 Soporta Resend, Gmail SMTP y modo desarrollo
 """
-import resend
+from resend import Resend
 from typing import Optional
 from app.config import settings
 from jinja2 import Template
@@ -10,9 +10,14 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Configurar Resend
+# Inicializar cliente de Resend si está configurado
+resend_client = None
 if settings.EMAIL_PROVIDER == "resend" and settings.RESEND_API_KEY:
-    resend.api_key = settings.RESEND_API_KEY
+    try:
+        resend_client = Resend(api_key=settings.RESEND_API_KEY)
+    except Exception as e:
+        print(f"⚠️ Error inicializando Resend: {str(e)}")
+        resend_client = None
 
 class EmailService:
     """Servicio para envío de emails con múltiples proveedores"""
@@ -351,6 +356,10 @@ class EmailService:
         text_content: str
     ) -> bool:
         """Envía email usando Resend"""
+        if not resend_client:
+            print(f"❌ Resend no está configurado correctamente. Verifica RESEND_API_KEY en las variables de entorno.")
+            return False
+        
         try:
             params = {
                 "from": f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>",
@@ -360,11 +369,13 @@ class EmailService:
                 "text": text_content
             }
             
-            response = resend.Emails.send(params)
+            response = resend_client.emails.send(params)
             print(f"✅ Email enviado via Resend: {response}")
             return True
         except Exception as e:
             print(f"❌ Error con Resend: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return False
     
     @staticmethod

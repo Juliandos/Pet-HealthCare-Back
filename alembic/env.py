@@ -1,5 +1,6 @@
 from logging.config import fileConfig
 from app.database import Base  # Asegúrate de importar tus modelos aquí para el autogenerado
+from app import models  # Importar todos los modelos para que Alembic los detecte
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
