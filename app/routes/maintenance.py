@@ -22,7 +22,10 @@ def fix_foreign_keys(
     """
     try:
         sql_statements = [
-            # Corregir password_resets
+            # Primero: Limpiar registros corruptos con user_id NULL
+            "DELETE FROM petcare.password_resets WHERE user_id IS NULL;",
+            
+            # Segundo: Corregir password_resets
             "ALTER TABLE petcare.password_resets DROP CONSTRAINT IF EXISTS password_resets_user_id_fkey;",
             """ALTER TABLE petcare.password_resets
                ADD CONSTRAINT password_resets_user_id_fkey 
@@ -30,7 +33,7 @@ def fix_foreign_keys(
                REFERENCES petcare.users(id) 
                ON DELETE CASCADE;""",
             
-            # Corregir audit_logs
+            # Tercero: Corregir audit_logs (permitir NULL aquí es correcto)
             "ALTER TABLE petcare.audit_logs DROP CONSTRAINT IF EXISTS audit_logs_actor_user_id_fkey;",
             """ALTER TABLE petcare.audit_logs
                ADD CONSTRAINT audit_logs_actor_user_id_fkey 
