@@ -10,49 +10,55 @@ from app.models import User
 
 router = APIRouter(prefix="/maintenance", tags=["Mantenimiento"])
 
-@router.post("/clean-corrupt-data")
-def clean_corrupt_data(
+@router.post("/force-delete-corrupt-record")
+def force_delete_corrupt_record(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
     """
-    🧹 Limpia registros corruptos de password_resets
+    🔨 Elimina FORZADAMENTE el registro corrupto específico
     ⚠️ Solo accesible por administradores
     """
     try:
-        # Buscar registros corruptos
+        # El ID problemático que vemos en los logs
+        corrupt_id = "35452231-6dfb-433c-8910-f094c53f4728"
+        
+        # Verificar si existe
         check = db.execute(text("""
             SELECT id, user_id, token, created_at
             FROM petcare.password_resets
-            WHERE user_id IS NULL;
-        """))
+            WHERE id = :record_id;
+        """), {"record_id": corrupt_id})
         
-        corrupt_records = []
-        for row in check:
-            corrupt_records.append({
-                "id": str(row.id),
-                "user_id": row.user_id,
-                "token": row.token,
-                "created_at": str(row.created_at)
-            })
+        record = check.fetchone()
         
-        # Eliminar registros corruptos
-        result = db.execute(text("DELETE FROM petcare.password_resets WHERE user_id IS NULL;"))
-        db.commit()
-        deleted_count = result.rowcount
-        
-        return {
-            "success": True,
-            "message": f"✅ Se eliminaron {deleted_count} registros corruptos",
-            "corrupt_records_found": corrupt_records,
-            "deleted_count": deleted_count
-        }
+        if record:
+            # Eliminar por ID específico
+            db.execute(text("DELETE FROM petcare.password_resets WHERE id = :record_id;"), {"record_id": corrupt_id})
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": f"✅ Registro corrupto {corrupt_id} eliminado",
+                "deleted_record": {
+                    "id": str(record.id),
+                    "user_id": record.user_id,
+                    "token": record.token,
+                    "created_at": str(record.created_at)
+                }
+            }
+        else:
+            return {
+                "success": True,
+                "message": "✅ El registro corrupto ya no existe",
+                "deleted_record": None
+            }
         
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al limpiar datos corruptos: {str(e)}"
+            detail=f"Error al eliminar registro corrupto: {str(e)}"
         )
 
 @router.post("/fix-foreign-keys")
