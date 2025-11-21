@@ -28,12 +28,24 @@ class ReminderController:
     
     @staticmethod
     def create(db: Session, data: ReminderCreate, current_user: User) -> Reminder:
+        # Validar que la mascota existe y pertenece al usuario si se proporciona pet_id
+        pet_id_uuid = None
         if data.pet_id:
-            pet = db.query(Pet).filter(Pet.id == data.pet_id, Pet.owner_id == current_user.id).first()
-            if not pet:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mascota no encontrada")
+            try:
+                import uuid
+                pet_id_uuid = uuid.UUID(data.pet_id) if isinstance(data.pet_id, str) else data.pet_id
+                pet = db.query(Pet).filter(Pet.id == pet_id_uuid, Pet.owner_id == current_user.id).first()
+                if not pet:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mascota no encontrada")
+            except (ValueError, TypeError) as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"ID de mascota inválido: {str(e)}")
         
-        new_item = Reminder(owner_id=current_user.id, **data.model_dump())
+        # Preparar datos para crear el recordatorio
+        reminder_data = data.model_dump(exclude={'pet_id'})
+        if pet_id_uuid:
+            reminder_data['pet_id'] = pet_id_uuid
+        
+        new_item = Reminder(owner_id=current_user.id, **reminder_data)
         db.add(new_item)
         db.commit()
         db.refresh(new_item)
@@ -47,6 +59,20 @@ class ReminderController:
     def update(db: Session, reminder_id: str, data: ReminderUpdate, current_user: User) -> Reminder:
         reminder = ReminderController.get_by_id(db, reminder_id, current_user)
         update_data = data.model_dump(exclude_unset=True)
+        
+        # Manejar conversión de pet_id si se proporciona
+        if 'pet_id' in update_data and update_data['pet_id'] is not None:
+            try:
+                import uuid
+                pet_id_uuid = uuid.UUID(update_data['pet_id']) if isinstance(update_data['pet_id'], str) else update_data['pet_id']
+                # Validar que la mascota existe y pertenece al usuario
+                pet = db.query(Pet).filter(Pet.id == pet_id_uuid, Pet.owner_id == current_user.id).first()
+                if not pet:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mascota no encontrada")
+                update_data['pet_id'] = pet_id_uuid
+            except (ValueError, TypeError) as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"ID de mascota inválido: {str(e)}")
+        
         for field, value in update_data.items():
             setattr(reminder, field, value)
         reminder.updated_at = datetime.utcnow()
