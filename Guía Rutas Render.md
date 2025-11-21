@@ -1,583 +1,690 @@
-# 🧪 Guía Completa de Pruebas - Pet HealthCare API
+# 📚 Guía Completa de Rutas - Pet HealthCare API
 
-## 🔄 Flujo Correcto de Autenticación
-
-### **IMPORTANTE:** Tu API requiere verificación de email antes de poder hacer login.
+**URL Base:** `https://pet-healthcare-back.onrender.com`  
+**Documentación Swagger:** `https://pet-healthcare-back.onrender.com/docs`
 
 ---
 
-## 📋 FLUJO COMPLETO PASO A PASO
+## 🔐 1. AUTENTICACIÓN (`/auth`)
 
-### ✅ PASO 1: Registrar Usuario
+**Permisos:** Público (no requiere autenticación)
 
-```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "julian_test",
-    "email": "julian@test.com",
-    "password": "SecurePass123",
-    "full_name": "Julian Ortega Test",
-    "phone": "+57 300 123 4567",
-    "timezone": "America/Bogota"
-  }'
+### 1.1 Registro de Usuario
+```http
+POST /auth/register
 ```
-
-**Respuesta esperada:**
+**Body:**
 ```json
 {
-  "id": "uuid-generado",
-  "username": "julian_test",
-  "email": "julian@test.com",
-  "email_verified": false,  // ⚠️ Aún no verificado
+  "email": "usuario@ejemplo.com",
+  "password": "SecurePass123",
+  "username": "usuario123",  // Opcional
+  "full_name": "Nombre Completo",  // Opcional
+  "phone": "+57 300 123 4567",  // Opcional
+  "timezone": "America/Bogota"  // Opcional
+}
+```
+**Nota:** Envía email de verificación automáticamente (SendGrid/Resend)
+
+### 1.2 Login
+```http
+POST /auth/login
+```
+**Body:**
+```json
+{
+  "email": "usuario@ejemplo.com",
+  "password": "SecurePass123"
+}
+```
+**Retorna:** `access_token` (30 min) y `refresh_token` (7 días)
+
+### 1.3 Verificar Email
+```http
+POST /auth/verify-email
+```
+**Body:**
+```json
+{
+  "token": "token-del-email"
+}
+```
+
+### 1.4 Refresh Token
+```http
+POST /auth/refresh
+```
+**Body:**
+```json
+{
+  "refresh_token": "tu-refresh-token"
+}
+```
+
+### 1.5 Logout
+```http
+POST /auth/logout
+```
+**Headers:** `Authorization: Bearer {access_token}`
+
+### 1.6 Solicitar Reseteo de Contraseña
+```http
+POST /auth/request-password-reset
+```
+**Body:**
+```json
+{
+  "email": "usuario@ejemplo.com"
+}
+```
+
+### 1.7 Resetear Contraseña
+```http
+POST /auth/reset-password
+```
+**Body:**
+```json
+{
+  "token": "token-del-email",
+  "new_password": "NewSecurePass456"
+}
+```
+
+### 1.8 Ver Perfil Actual
+```http
+GET /auth/me
+```
+**Headers:** `Authorization: Bearer {access_token}`
+
+---
+
+## 👤 2. USUARIOS (`/users`)
+
+### 2.1 Perfil del Usuario Actual (USER)
+```http
+GET /users/me
+PUT /users/me
+GET /users/me/statistics
+```
+**Permisos:** Usuario autenticado (solo su propio perfil)
+
+**Estadísticas incluyen:**
+- Número de mascotas
+- Número de recordatorios activos
+- Número de notificaciones pendientes
+
+### 2.2 Cambiar Contraseña (USER)
+```http
+POST /users/me/change-password
+```
+**Body:**
+```json
+{
+  "current_password": "SecurePass123",
+  "new_password": "NewSecurePass456"
+}
+```
+
+### 2.3 Gestión de Usuarios (ADMIN)
+```http
+GET /users/                    # Listar todos los usuarios
+GET /users/{user_id}           # Ver usuario específico
+PUT /users/{user_id}           # Actualizar usuario
+DELETE /users/{user_id}        # Eliminar usuario
+POST /users/{user_id}/deactivate  # Desactivar usuario
+POST /users/{user_id}/reactivate  # Reactivar usuario
+GET /users/{user_id}/statistics   # Estadísticas del usuario
+```
+**Permisos:** Solo administradores
+
+**Filtros disponibles en GET /users/:**
+- `search`: Buscar por username, email o nombre
+- `is_active`: Filtrar por estado activo
+- `skip`: Paginación
+- `limit`: Límite de resultados (máx 100)
+
+---
+
+## 🐾 3. MASCOTAS (`/pets`)
+
+**Permisos:** Usuario autenticado (solo sus propias mascotas)
+
+### 3.1 CRUD Básico
+```http
+GET /pets/                     # Listar todas mis mascotas
+GET /pets/summary              # Resumen de mascotas
+GET /pets/{pet_id}             # Ver mascota específica
+POST /pets/                    # Crear nueva mascota
+PUT /pets/{pet_id}             # Actualizar mascota
+DELETE /pets/{pet_id}          # Eliminar mascota
+```
+
+**Filtros en GET /pets/:**
+- `species`: Filtrar por especie (perro, gato, ave, etc.)
+- `skip`: Paginación
+- `limit`: Límite (máx 100)
+
+**Body para crear/actualizar:**
+```json
+{
+  "name": "Max",
+  "species": "perro",
+  "breed": "Labrador",
+  "birth_date": "2020-01-15",
+  "weight_kg": 25.5,
+  "sex": "macho",
+  "notes": "Muy juguetón"
+}
+```
+
+### 3.2 Estadísticas de Mascota
+```http
+GET /pets/{pet_id}/stats
+```
+**Incluye:**
+- Última vacunación
+- Próxima vacunación
+- Última desparasitación
+- Próxima desparasitación
+- Última visita veterinaria
+- Próxima visita programada
+- Total de comidas registradas
+- Planes de nutrición activos
+
+---
+
+## 💉 4. VACUNACIONES (`/vaccinations`)
+
+**Permisos:** Usuario autenticado (solo sus mascotas)
+
+### CRUD Completo
+```http
+GET /vaccinations/              # Listar todas (filtro: ?pet_id={id})
+GET /vaccinations/{id}         # Ver específica
+POST /vaccinations/             # Crear nueva
+PUT /vaccinations/{id}          # Actualizar
+DELETE /vaccinations/{id}      # Eliminar
+```
+
+**Body ejemplo:**
+```json
+{
+  "pet_id": "uuid-de-mascota",
+  "vaccine_name": "Rabia",
+  "manufacturer": "Laboratorio XYZ",
+  "lot_number": "LOT123",
+  "date_administered": "2024-01-15",
+  "next_due": "2025-01-15",
+  "veterinarian": "Dr. García",
+  "notes": "Sin reacciones"
+}
+```
+
+---
+
+## 🪱 5. DESPARASITACIONES (`/dewormings`)
+
+**Permisos:** Usuario autenticado (solo sus mascotas)
+
+### CRUD Completo
+```http
+GET /dewormings/               # Listar todas (filtro: ?pet_id={id})
+GET /dewormings/{id}           # Ver específica
+POST /dewormings/              # Crear nueva
+PUT /dewormings/{id}           # Actualizar
+DELETE /dewormings/{id}        # Eliminar
+```
+
+**Body ejemplo:**
+```json
+{
+  "pet_id": "uuid-de-mascota",
+  "medication": "Praziquantel",
+  "date_administered": "2024-01-15",
+  "next_due": "2024-04-15",
+  "veterinarian": "Dr. García",
+  "notes": "Aplicado correctamente"
+}
+```
+
+---
+
+## 🏥 6. VISITAS VETERINARIAS (`/vet-visits`)
+
+**Permisos:** Usuario autenticado (solo sus mascotas)
+
+### CRUD Completo
+```http
+GET /vet-visits/               # Listar todas (filtro: ?pet_id={id})
+GET /vet-visits/{id}           # Ver específica
+POST /vet-visits/              # Crear nueva
+PUT /vet-visits/{id}           # Actualizar
+DELETE /vet-visits/{id}        # Eliminar
+```
+
+**Body ejemplo:**
+```json
+{
+  "pet_id": "uuid-de-mascota",
+  "visit_date": "2024-01-15T10:00:00Z",
+  "reason": "Revisión anual",
+  "diagnosis": "Saludable",
+  "treatment": "Ninguno",
+  "follow_up_date": "2025-01-15T10:00:00Z",
+  "veterinarian": "Dr. García"
+}
+```
+
+---
+
+## 🍽️ 7. PLANES DE NUTRICIÓN (`/nutrition-plans`)
+
+**Permisos:** Usuario autenticado (solo sus mascotas)
+
+### CRUD Completo
+```http
+GET /nutrition-plans/          # Listar todos (filtro: ?pet_id={id})
+GET /nutrition-plans/summary   # Resumen de planes
+GET /nutrition-plans/{id}      # Ver específico
+GET /nutrition-plans/{id}/meals # Ver comidas del plan
+POST /nutrition-plans/         # Crear nuevo
+PUT /nutrition-plans/{id}      # Actualizar
+DELETE /nutrition-plans/{id}   # Eliminar
+```
+
+**Body ejemplo:**
+```json
+{
+  "pet_id": "uuid-de-mascota",
+  "name": "Plan Adulto",
+  "description": "Alimentación para perro adulto",
+  "calories_per_day": 1200
+}
+```
+
+---
+
+## 🍖 8. COMIDAS (`/meals`)
+
+**Permisos:** Usuario autenticado (solo sus mascotas)
+
+### CRUD Completo
+```http
+GET /meals/                    # Listar todas (filtro: ?pet_id={id})
+GET /meals/{id}                # Ver específica
+POST /meals/                   # Crear nueva
+PUT /meals/{id}                # Actualizar
+DELETE /meals/{id}             # Eliminar
+```
+
+**Body ejemplo:**
+```json
+{
+  "pet_id": "uuid-de-mascota",
+  "plan_id": "uuid-del-plan",  // Opcional
+  "meal_time": "2024-01-15T08:00:00Z",
+  "description": "Croquetas premium",
+  "calories": 300
+}
+```
+
+---
+
+## ⏰ 9. RECORDATORIOS (`/reminders`)
+
+**Permisos:** Usuario autenticado (solo sus recordatorios)
+
+### CRUD Completo
+```http
+GET /reminders/                # Listar todos (filtros: ?pet_id={id}&is_active={true/false})
+GET /reminders/{id}            # Ver específico
+POST /reminders/               # Crear nuevo
+PUT /reminders/{id}            # Actualizar
+DELETE /reminders/{id}         # Eliminar
+```
+
+**Body ejemplo:**
+```json
+{
+  "pet_id": "uuid-de-mascota",  // Opcional
+  "title": "Vacuna anual",
+  "description": "Recordatorio para vacuna de rabia",
+  "event_time": "2024-12-15T10:00:00Z",
+  "timezone": "America/Bogota",
+  "frequency": "yearly",  // once, daily, weekly, monthly, yearly
   "is_active": true,
-  ...
+  "notify_by_email": true,
+  "notify_in_app": true
 }
 ```
 
 ---
 
-### ✅ PASO 2: Obtener Token de Verificación (DESARROLLO)
+## 📸 10. IMÁGENES - AWS S3 (`/images`)
 
-Como no tienes configurado el envío de emails, usa este endpoint de desarrollo:
+**Permisos:** Usuario autenticado (solo sus mascotas)
 
+### 10.1 Subir Foto de Perfil
+```http
+POST /images/pets/{pet_id}/profile
+```
+**Content-Type:** `multipart/form-data`  
+**Body:** `file` (imagen)
+
+**Restricciones:**
+- Tamaño máximo: 5MB
+- Formatos: jpg, jpeg, png, gif, webp
+- Se optimiza automáticamente
+- Se almacena en AWS S3
+
+**Ejemplo con curl:**
 ```bash
-curl https://pet-healthcare-api.onrender.com/auth/dev/get-verification-token/julian@test.com
+curl -X POST "https://pet-healthcare-back.onrender.com/images/pets/{pet_id}/profile" \
+  -H "Authorization: Bearer {token}" \
+  -F "file=@/ruta/a/imagen.jpg"
 ```
 
-**Respuesta esperada:**
+### 10.2 Subir Foto a Galería
+```http
+POST /images/pets/{pet_id}/gallery
+```
+**Mismo formato que foto de perfil**
+
+### 10.3 Listar Fotos
+```http
+GET /images/pets/{pet_id}/photos
+```
+**Retorna:** Lista con URLs de S3 y metadatos
+
+### 10.4 Eliminar Foto Específica
+```http
+DELETE /images/pets/{pet_id}/photos?s3_key={clave-s3}
+```
+**Parámetro:** `s3_key` obtenido al listar las fotos
+
+### 10.5 Eliminar Todas las Fotos
+```http
+DELETE /images/pets/{pet_id}/photos/all
+```
+**⚠️ Elimina permanentemente todas las fotos de la mascota**
+
+---
+
+## 🔔 11. NOTIFICACIONES (`/notifications`)
+
+**Permisos:** Usuario autenticado (solo sus notificaciones)
+
+### CRUD Completo
+```http
+GET /notifications/            # Listar todas
+GET /notifications/{id}        # Ver específica
+POST /notifications/           # Crear nueva
+PUT /notifications/{id}        # Actualizar
+DELETE /notifications/{id}     # Eliminar
+```
+
+**Body ejemplo:**
 ```json
 {
-  "email": "julian@test.com",
-  "verification_token": "token-largo-aleatorio-aqui",
-  "email_verified": false,
-  "instructions": "Usa este token en POST /auth/verify-email..."
+  "reminder_id": "uuid-del-recordatorio",  // Opcional
+  "pet_id": "uuid-de-mascota",  // Opcional
+  "sent_at": "2024-01-15T10:00:00Z",
+  "method": "email",
+  "status": "sent",
+  "provider_response": {}
 }
 ```
 
-**⚠️ COPIA EL TOKEN QUE TE DA**
+---
+
+## 📋 12. LOGS DE AUDITORÍA (`/audit-logs`)
+
+**Permisos:**
+- **USER:** Solo sus propios logs
+- **ADMIN:** Todos los logs
+
+### 12.1 Listar Logs
+```http
+GET /audit-logs/
+```
+**Filtros disponibles:**
+- `actor_user_id`: Filtrar por usuario
+- `action`: Filtrar por acción (búsqueda parcial)
+- `object_type`: Tipo de objeto afectado
+- `object_id`: ID específico del objeto
+- `date_from`: Desde fecha
+- `date_to`: Hasta fecha
+- `skip`: Paginación
+- `limit`: Límite (máx 1000)
+
+**Ejemplo:**
+```
+GET /audit-logs/?action=USER_LOGIN&date_from=2024-01-01
+```
+
+### 12.2 Ver Log Específico
+```http
+GET /audit-logs/{id}
+```
+
+### 12.3 Crear Log (Sistema)
+```http
+POST /audit-logs/
+```
+**Nota:** Generalmente usado por el sistema internamente
 
 ---
 
-### ✅ PASO 3: Verificar Email
+## 🔑 13. RESETEOS DE CONTRASEÑA (`/password-resets`)
 
-```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/verify-email \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "PEGA-AQUI-EL-TOKEN-QUE-COPIASTE"
-  }'
+**Permisos:** 
+- Público: Solicitar reseteo
+- Usuario autenticado: Ver sus propios reseteos
+- Admin: Ver todos los reseteos
+
+### 13.1 Solicitar Reseteo (Público)
+```http
+POST /password-resets/request
 ```
-
-**Respuesta esperada:**
+**Body:**
 ```json
 {
-  "message": "Email verificado exitosamente"
+  "email": "usuario@ejemplo.com"
 }
 ```
 
----
-
-### ✅ PASO 4: Ahora SÍ puedes hacer Login
-
-```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "julian@test.com",
-    "password": "SecurePass123"
-  }'
+### 13.2 Confirmar Reseteo (Público)
+```http
+POST /password-resets/confirm
 ```
-
-**Respuesta esperada:**
+**Body:**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "expires_in": 1800
+  "token": "token-del-email",
+  "new_password": "NewSecurePass456"
 }
 ```
 
-**⚠️ GUARDA EL ACCESS_TOKEN - Lo necesitarás para todo lo demás**
+### 13.3 Validar Token (Público)
+```http
+GET /password-resets/validate/{token}
+```
+
+### 13.4 Listar Reseteos (USER/ADMIN)
+```http
+GET /password-resets/
+```
+**Filtros:**
+- `user_id`: Filtrar por usuario
+- `is_used`: Filtrar por tokens usados/no usados
+- `skip`: Paginación
+- `limit`: Límite
 
 ---
 
-## 🔑 ENDPOINTS QUE REQUIEREN AUTENTICACIÓN
+## 🧪 GUÍA DE PRUEBAS RÁPIDAS PARA PRESENTACIÓN
 
-Ahora que tienes tu `access_token`, puedes probar estos endpoints:
-
-### 1️⃣ Ver tu Perfil
-
+### Paso 1: Autenticación
 ```bash
-curl -X GET https://pet-healthcare-api.onrender.com/auth/me \
-  -H "Authorization: Bearer TU_ACCESS_TOKEN_AQUI"
+# 1. Registrar usuario
+POST /auth/register
+Body: {"email": "test@ejemplo.com", "password": "Test1234"}
+
+# 2. Verificar email (copiar token del email o logs)
+POST /auth/verify-email
+Body: {"token": "token-del-email"}
+
+# 3. Login
+POST /auth/login
+Body: {"email": "test@ejemplo.com", "password": "Test1234"}
+
+# Guardar el access_token para los siguientes pasos
 ```
 
----
-
-### 2️⃣ Validar Token
-
+### Paso 2: Crear Mascota
 ```bash
-curl -X GET https://pet-healthcare-api.onrender.com/auth/validate-token \
-  -H "Authorization: Bearer TU_ACCESS_TOKEN_AQUI"
-```
-
-**Respuesta esperada:**
-```json
-{
-  "valid": true,
-  "user_id": "tu-uuid",
-  "email": "julian@test.com",
-  "role": "user"
+POST /pets/
+Headers: Authorization: Bearer {access_token}
+Body: {
+  "name": "Max",
+  "species": "perro",
+  "breed": "Labrador",
+  "birth_date": "2020-01-15"
 }
+
+# Guardar el pet_id
 ```
 
----
-
-### 3️⃣ Decodificar Token (DESARROLLO)
-
-Para ver qué contiene tu token:
-
+### Paso 3: Subir Foto (S3)
 ```bash
-curl -X POST "https://pet-healthcare-api.onrender.com/auth/dev/decode-token?token=TU_ACCESS_TOKEN_AQUI"
+POST /images/pets/{pet_id}/profile
+Headers: Authorization: Bearer {access_token}
+Body: multipart/form-data con archivo imagen
 ```
 
----
-
-### 4️⃣ Listar Mascotas
-
+### Paso 4: Crear Registros Relacionados
 ```bash
-curl -X GET https://pet-healthcare-api.onrender.com/pets/ \
-  -H "Authorization: Bearer TU_ACCESS_TOKEN_AQUI"
+# Vacunación
+POST /vaccinations/
+Body: {"pet_id": "{pet_id}", "vaccine_name": "Rabia", "date_administered": "2024-01-15"}
+
+# Desparasitación
+POST /dewormings/
+Body: {"pet_id": "{pet_id}", "medication": "Praziquantel", "date_administered": "2024-01-15"}
+
+# Visita Veterinaria
+POST /vet-visits/
+Body: {"pet_id": "{pet_id}", "visit_date": "2024-01-15T10:00:00Z", "reason": "Revisión"}
+
+# Plan de Nutrición
+POST /nutrition-plans/
+Body: {"pet_id": "{pet_id}", "name": "Plan Adulto", "calories_per_day": 1200}
+
+# Comida
+POST /meals/
+Body: {"pet_id": "{pet_id}", "meal_time": "2024-01-15T08:00:00Z", "calories": 300}
+
+# Recordatorio
+POST /reminders/
+Body: {"pet_id": "{pet_id}", "title": "Vacuna", "event_time": "2024-12-15T10:00:00Z", "frequency": "yearly"}
 ```
 
-**Respuesta esperada (si no tienes mascotas):**
-```json
-[]
-```
-
----
-
-### 5️⃣ Refrescar Token (cuando expire)
-
+### Paso 5: Ver Estadísticas
 ```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{
-    "refresh_token": "TU_REFRESH_TOKEN_AQUI"
-  }'
+# Estadísticas de mascota
+GET /pets/{pet_id}/stats
+
+# Estadísticas del usuario
+GET /users/me/statistics
 ```
 
-**Respuesta esperada:**
-```json
-{
-  "access_token": "nuevo-token-aqui",
-  "token_type": "bearer",
-  "expires_in": 1800
-}
-```
-
----
-
-### 6️⃣ Cerrar Sesión
-
+### Paso 6: Funciones Admin (si eres admin)
 ```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/logout \
-  -H "Authorization: Bearer TU_ACCESS_TOKEN_AQUI"
-```
+# Listar todos los usuarios
+GET /users/
 
-**Respuesta esperada:**
-```json
-{
-  "message": "Sesión cerrada exitosamente"
-}
+# Ver logs de auditoría
+GET /audit-logs/
 ```
 
 ---
 
-## 🔐 PROBAR RESETEO DE CONTRASEÑA
+## 📊 RESUMEN DE PERMISOS
 
-### PASO 1: Solicitar Reseteo
+| Endpoint | Público | User | Admin |
+|----------|---------|------|-------|
+| `/auth/*` | ✅ | ✅ | ✅ |
+| `/users/me` | ❌ | ✅ | ✅ |
+| `/users/` | ❌ | ❌ | ✅ |
+| `/pets/*` | ❌ | ✅ | ✅ |
+| `/vaccinations/*` | ❌ | ✅ | ✅ |
+| `/dewormings/*` | ❌ | ✅ | ✅ |
+| `/vet-visits/*` | ❌ | ✅ | ✅ |
+| `/nutrition-plans/*` | ❌ | ✅ | ✅ |
+| `/meals/*` | ❌ | ✅ | ✅ |
+| `/reminders/*` | ❌ | ✅ | ✅ |
+| `/images/*` | ❌ | ✅ | ✅ |
+| `/notifications/*` | ❌ | ✅ | ✅ |
+| `/audit-logs/` | ❌ | ✅* | ✅ |
+| `/password-resets/request` | ✅ | ✅ | ✅ |
+| `/password-resets/` | ❌ | ✅* | ✅ |
 
-```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/request-password-reset \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "julian@test.com"
-  }'
-```
-
-**Respuesta:**
-```json
-{
-  "message": "Si el email existe, recibirás un link de reseteo"
-}
-```
-
-### PASO 2: Obtener Token de Reseteo (DESARROLLO)
-
-**Opción A: Conectarte a la base de datos en Render**
-
-1. Ve a tu PostgreSQL Database en Render
-2. Copia la "External Database URL"
-3. Conéctate:
-
-```bash
-psql "EXTERNAL_DATABASE_URL_AQUI"
-```
-
-4. Ejecuta:
-
-```sql
-SELECT token, expires_at, used 
-FROM petcare.password_resets 
-WHERE user_id = (SELECT id FROM petcare.users WHERE email = 'julian@test.com')
-ORDER BY created_at DESC 
-LIMIT 1;
-```
-
-**Opción B: Si necesitas un endpoint de desarrollo**
-
-Agregar este endpoint temporalmente en `app/routes/auth.py`:
-
-```python
-@router.get("/dev/get-password-reset-token/{email}")
-def get_password_reset_token_dev(email: str, db: Session = Depends(get_db)):
-    """⚠️ SOLO DESARROLLO - Obtiene el token de reseteo"""
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise UserNotFoundException()
-    
-    reset = db.query(PasswordReset).filter(
-        PasswordReset.user_id == user.id,
-        PasswordReset.used == False
-    ).order_by(PasswordReset.created_at.desc()).first()
-    
-    if not reset:
-        return {"error": "No hay tokens de reseteo pendientes"}
-    
-    return {
-        "email": email,
-        "token": reset.token,
-        "expires_at": reset.expires_at.isoformat(),
-        "used": reset.used
-    }
-```
-
-### PASO 3: Resetear Contraseña
-
-```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/reset-password \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "TOKEN_DE_RESETEO_AQUI",
-    "new_password": "NewSecurePass456"
-  }'
-```
-
-**Respuesta:**
-```json
-{
-  "message": "Contraseña actualizada exitosamente"
-}
-```
-
-### PASO 4: Login con Nueva Contraseña
-
-```bash
-curl -X POST https://pet-healthcare-api.onrender.com/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "julian@test.com",
-    "password": "NewSecurePass456"
-  }'
-```
+*Solo sus propios registros
 
 ---
 
-## 📊 USANDO SWAGGER UI (MÁS FÁCIL)
+## 🔗 CONEXIONES ENTRE RUTAS
 
-### 1. Abre Swagger:
-```
-https://pet-healthcare-api.onrender.com/docs
-```
+### Flujo Principal:
+1. **Usuario** → Crea **Mascota**
+2. **Mascota** → Tiene **Vacunaciones**, **Desparasitaciones**, **Visitas Veterinarias**
+3. **Mascota** → Tiene **Planes de Nutrición** → Tiene **Comidas**
+4. **Mascota** → Tiene **Fotos** (almacenadas en S3)
+5. **Usuario** → Crea **Recordatorios** (opcionalmente vinculados a mascota)
+6. **Recordatorios** → Generan **Notificaciones**
 
-### 2. Registrar Usuario:
-- Expande **POST /auth/register**
-- Click "Try it out"
-- Completa los datos
-- Click "Execute"
-- **Copia el email que usaste**
-
-### 3. Obtener Token de Verificación:
-- Expande **GET /auth/dev/get-verification-token/{email}**
-- Click "Try it out"
-- Pega tu email
-- Click "Execute"
-- **Copia el verification_token**
-
-### 4. Verificar Email:
-- Expande **POST /auth/verify-email**
-- Click "Try it out"
-- Pega el token:
-```json
-{
-  "token": "el-token-que-copiaste"
-}
-```
-- Click "Execute"
-
-### 5. Login:
-- Expande **POST /auth/login**
-- Click "Try it out"
-- Ingresa email y password
-- Click "Execute"
-- **Copia el access_token**
-
-### 6. Autorizar en Swagger:
-- Click en el botón **"Authorize" 🔓** (arriba a la derecha)
-- En el campo "Value" ingresa: `Bearer tu-access-token-aqui`
-- Click "Authorize"
-- Click "Close"
-
-### 7. Probar Endpoints Protegidos:
-Ahora todos los endpoints con el candado funcionarán:
-- ✅ **GET /auth/me** - Ver tu perfil
-- ✅ **GET /auth/validate-token** - Validar token
-- ✅ **POST /auth/logout** - Cerrar sesión
-- ✅ **GET /pets/** - Listar mascotas
+### Relaciones:
+- `pets` → `vaccinations`, `dewormings`, `vet_visits`, `nutrition_plans`, `meals`, `pet_photos`
+- `users` → `pets`, `reminders`, `notifications`, `audit_logs`
+- `reminders` → `notifications` (cuando se activan)
+- `nutrition_plans` → `meals` (opcional)
 
 ---
 
-## 🎯 SCRIPT COMPLETO DE PRUEBAS
+## 🎯 CHECKLIST PARA PRESENTACIÓN
 
-Guarda este script como `test_complete.sh`:
-
-```bash
-#!/bin/bash
-
-API_URL="https://pet-healthcare-api.onrender.com"
-EMAIL="test_$(date +%s)@example.com"
-PASSWORD="TestPass123"
-USERNAME="test_$(date +%s)"
-
-echo "🧪 Iniciando pruebas completas..."
-echo "📧 Email: $EMAIL"
-echo ""
-
-# 1. Registro
-echo "1️⃣  Registrando usuario..."
-REGISTER=$(curl -s -X POST "$API_URL/auth/register" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"username\": \"$USERNAME\",
-    \"email\": \"$EMAIL\",
-    \"password\": \"$PASSWORD\",
-    \"full_name\": \"Test User\",
-    \"timezone\": \"America/Bogota\"
-  }")
-
-echo "✅ Usuario registrado"
-echo ""
-
-# 2. Obtener token de verificación
-echo "2️⃣  Obteniendo token de verificación..."
-VERIFY_TOKEN=$(curl -s "$API_URL/auth/dev/get-verification-token/$EMAIL" | grep -o '"verification_token":"[^"]*"' | cut -d'"' -f4)
-
-if [ -z "$VERIFY_TOKEN" ]; then
-    echo "❌ Error: No se pudo obtener el token de verificación"
-    exit 1
-fi
-
-echo "✅ Token obtenido: ${VERIFY_TOKEN:0:20}..."
-echo ""
-
-# 3. Verificar email
-echo "3️⃣  Verificando email..."
-curl -s -X POST "$API_URL/auth/verify-email" \
-  -H "Content-Type: application/json" \
-  -d "{\"token\": \"$VERIFY_TOKEN\"}" > /dev/null
-
-echo "✅ Email verificado"
-echo ""
-
-# 4. Login
-echo "4️⃣  Haciendo login..."
-LOGIN=$(curl -s -X POST "$API_URL/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"email\": \"$EMAIL\",
-    \"password\": \"$PASSWORD\"
-  }")
-
-ACCESS_TOKEN=$(echo $LOGIN | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-
-if [ -z "$ACCESS_TOKEN" ]; then
-    echo "❌ Error en login"
-    echo "$LOGIN"
-    exit 1
-fi
-
-echo "✅ Login exitoso"
-echo "🔑 Token: ${ACCESS_TOKEN:0:30}..."
-echo ""
-
-# 5. Ver perfil
-echo "5️⃣  Obteniendo perfil..."
-PROFILE=$(curl -s "$API_URL/auth/me" \
-  -H "Authorization: Bearer $ACCESS_TOKEN")
-
-echo "✅ Perfil obtenido:"
-echo "$PROFILE" | grep -o '"email":"[^"]*"'
-echo ""
-
-# 6. Validar token
-echo "6️⃣  Validando token..."
-VALIDATE=$(curl -s "$API_URL/auth/validate-token" \
-  -H "Authorization: Bearer $ACCESS_TOKEN")
-
-echo "✅ Token válido:"
-echo "$VALIDATE"
-echo ""
-
-# 7. Listar mascotas
-echo "7️⃣  Listando mascotas..."
-PETS=$(curl -s "$API_URL/pets/" \
-  -H "Authorization: Bearer $ACCESS_TOKEN")
-
-echo "✅ Mascotas: $PETS"
-echo ""
-
-# 8. Logout
-echo "8️⃣  Cerrando sesión..."
-curl -s -X POST "$API_URL/auth/logout" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" > /dev/null
-
-echo "✅ Sesión cerrada"
-echo ""
-
-echo "🎉 ¡Todas las pruebas completadas exitosamente!"
-```
-
-**Ejecutar:**
-```bash
-chmod +x test_complete.sh
-./test_complete.sh
-```
+- [ ] ✅ Autenticación completa (registro → verificación → login)
+- [ ] ✅ CRUD de Mascotas
+- [ ] ✅ Subir foto a S3
+- [ ] ✅ Crear vacunación
+- [ ] ✅ Crear desparasitación
+- [ ] ✅ Crear visita veterinaria
+- [ ] ✅ Crear plan de nutrición y comida
+- [ ] ✅ Crear recordatorio
+- [ ] ✅ Ver estadísticas de mascota
+- [ ] ✅ Ver estadísticas de usuario
+- [ ] ✅ Listar fotos de mascota
+- [ ] ✅ Funciones admin (si aplica)
 
 ---
 
-## 🐍 SCRIPT EN PYTHON
+## 📝 NOTAS IMPORTANTES
 
-```python
-import requests
-import time
+1. **Todos los endpoints requieren `Authorization: Bearer {token}` excepto:**
+   - `/auth/register`
+   - `/auth/login`
+   - `/auth/verify-email`
+   - `/auth/request-password-reset`
+   - `/auth/reset-password`
 
-API_URL = "https://pet-healthcare-api.onrender.com"
-EMAIL = f"test_{int(time.time())}@example.com"
-PASSWORD = "TestPass123"
-USERNAME = f"test_{int(time.time())}"
+2. **Los usuarios solo pueden acceder a sus propios datos** (excepto admins)
 
-print("🧪 Iniciando pruebas completas...")
-print(f"📧 Email: {EMAIL}\n")
+3. **Las imágenes se almacenan en AWS S3** y se optimizan automáticamente
 
-# 1. Registro
-print("1️⃣  Registrando usuario...")
-response = requests.post(f"{API_URL}/auth/register", json={
-    "username": USERNAME,
-    "email": EMAIL,
-    "password": PASSWORD,
-    "full_name": "Test User",
-    "timezone": "America/Bogota"
-})
-assert response.status_code == 201, f"Error en registro: {response.text}"
-print("✅ Usuario registrado\n")
+4. **Los emails se envían automáticamente** al registrar y resetear contraseña (SendGrid)
 
-# 2. Obtener token de verificación
-print("2️⃣  Obteniendo token de verificación...")
-response = requests.get(f"{API_URL}/auth/dev/get-verification-token/{EMAIL}")
-data = response.json()
-verify_token = data['verification_token']
-print(f"✅ Token obtenido: {verify_token[:20]}...\n")
-
-# 3. Verificar email
-print("3️⃣  Verificando email...")
-response = requests.post(f"{API_URL}/auth/verify-email", json={
-    "token": verify_token
-})
-assert response.status_code == 200, f"Error en verificación: {response.text}"
-print("✅ Email verificado\n")
-
-# 4. Login
-print("4️⃣  Haciendo login...")
-response = requests.post(f"{API_URL}/auth/login", json={
-    "email": EMAIL,
-    "password": PASSWORD
-})
-assert response.status_code == 200, f"Error en login: {response.text}"
-tokens = response.json()
-access_token = tokens['access_token']
-print(f"✅ Login exitoso")
-print(f"🔑 Token: {access_token[:30]}...\n")
-
-# Headers con autenticación
-headers = {"Authorization": f"Bearer {access_token}"}
-
-# 5. Ver perfil
-print("5️⃣  Obteniendo perfil...")
-response = requests.get(f"{API_URL}/auth/me", headers=headers)
-assert response.status_code == 200
-profile = response.json()
-print(f"✅ Perfil obtenido: {profile['email']}\n")
-
-# 6. Validar token
-print("6️⃣  Validando token...")
-response = requests.get(f"{API_URL}/auth/validate-token", headers=headers)
-assert response.status_code == 200
-print(f"✅ Token válido: {response.json()}\n")
-
-# 7. Listar mascotas
-print("7️⃣  Listando mascotas...")
-response = requests.get(f"{API_URL}/pets/", headers=headers)
-assert response.status_code == 200
-print(f"✅ Mascotas: {response.json()}\n")
-
-# 8. Logout
-print("8️⃣  Cerrando sesión...")
-response = requests.post(f"{API_URL}/auth/logout", headers=headers)
-assert response.status_code == 200
-print("✅ Sesión cerrada\n")
-
-print("🎉 ¡Todas las pruebas completadas exitosamente!")
-```
+5. **Los recordatorios pueden generar notificaciones** automáticamente según su configuración
 
 ---
 
-## ⚠️ IMPORTANTE - DESACTIVAR VERIFICACIÓN DE EMAIL (Opcional)
-
-Si quieres desactivar temporalmente la verificación de email para facilitar las pruebas, modifica `app/controllers/auth.py`:
-
-```python
-# En el método login_user, comenta o elimina estas líneas:
-
-# Opcional: Verificar si el email está verificado
-# if not user.email_verified:
-#     raise EmailNotVerifiedException()
-```
-
-Luego redespliega en Render.
-
----
-
-## 📝 RESUMEN DEL FLUJO CORRECTO
-
-1. ✅ Registrar usuario → `POST /auth/register`
-2. ✅ Obtener token de verificación → `GET /auth/dev/get-verification-token/{email}`
-3. ✅ Verificar email → `POST /auth/verify-email`
-4. ✅ Login → `POST /auth/login` ← **Ahora SÍ funciona**
-5. ✅ Usar el token en endpoints protegidos
-
----
-
-¿Necesitas ayuda con algún paso específico? 🚀
+¿Necesitas ayuda con alguna ruta específica? 🚀
