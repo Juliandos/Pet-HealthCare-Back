@@ -121,20 +121,52 @@ class PetController:
         """
         pet = PetController.get_pet_by_id(db, pet_id, current_user)
         
-        # Eliminar fotos de S3 ANTES de eliminar la mascota
-        # (las fotos en BD se eliminarán automáticamente por CASCADE)
+        # IMPORTANTE: Eliminar manualmente las fotos de la BD ANTES de eliminar la mascota
+        # Esto evita problemas con registros corruptos o referencias circulares
         try:
             pet_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).all()
             for photo in pet_photos:
+                # Eliminar de S3 primero
                 if photo.url:
-                    # Extraer s3_key de la URL
-                    url_parts = photo.url.split('.amazonaws.com/')
-                    if len(url_parts) > 1:
-                        s3_key = url_parts[1]
-                        s3_service.delete_image(s3_key)
-            print(f"✅ Eliminadas {len(pet_photos)} fotos de S3 para mascota {pet_id}")
+                    try:
+                        url_parts = photo.url.split('.amazonaws.com/')
+                        if len(url_parts) > 1:
+                            s3_key = url_parts[1]
+                            s3_service.delete_image(s3_key)
+                    except Exception as e:
+                        print(f"⚠️ Error eliminando foto de S3 {photo.id}: {str(e)}")
+                
+                # Eliminar registro de la BD
+                db.delete(photo)
+            
+            # Commit las eliminaciones de fotos antes de eliminar la mascota
+            db.commit()
+            print(f"✅ Eliminadas {len(pet_photos)} fotos de BD y S3 para mascota {pet_id}")
         except Exception as e:
-            print(f"⚠️ Error eliminando fotos de S3 (continuando con eliminación): {str(e)}")
+            print(f"⚠️ Error eliminando fotos (continuando con eliminación): {str(e)}")
+            db.rollback()
+        
+        # Limpiar cualquier registro corrupto de pet_photos con pet_id = null relacionado
+        # (aunque no debería haber, por seguridad)
+        try:
+            corrupt_photos = db.query(PetPhoto).filter(PetPhoto.pet_id.is_(None)).all()
+            if corrupt_photos:
+                print(f"⚠️ Encontrados {len(corrupt_photos)} registros corruptos de pet_photos con pet_id=null, eliminándolos...")
+                for corrupt_photo in corrupt_photos:
+                    # Intentar eliminar de S3 si tiene URL
+                    if corrupt_photo.url:
+                        try:
+                            url_parts = corrupt_photo.url.split('.amazonaws.com/')
+                            if len(url_parts) > 1:
+                                s3_key = url_parts[1]
+                                s3_service.delete_image(s3_key)
+                        except:
+                            pass
+                    db.delete(corrupt_photo)
+                db.commit()
+        except Exception as e:
+            print(f"⚠️ Error limpiando registros corruptos: {str(e)}")
+            db.rollback()
         
         # Log de auditoría antes de eliminar
         audit = AuditLog(
@@ -146,7 +178,7 @@ class PetController:
         )
         db.add(audit)
         
-        # Eliminar mascota (CASCADE eliminará todos los registros relacionados en BD)
+        # Eliminar mascota (CASCADE eliminará todos los demás registros relacionados en BD)
         db.delete(pet)
         db.commit()
         
