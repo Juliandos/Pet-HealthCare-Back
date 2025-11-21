@@ -4,6 +4,7 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 from app.models import ReminderFrequency
 
 class ReminderBase(BaseModel):
@@ -38,6 +39,15 @@ class ReminderResponse(ReminderBase):
     owner_id: str
     created_at: datetime
     updated_at: datetime
+    
+    @validator('id', 'owner_id', 'pet_id', pre=True)
+    def convert_uuid_to_str(cls, v):
+        """Convierte UUID a string si es necesario"""
+        if v is None:
+            return None
+        if isinstance(v, UUID):
+            return str(v)
+        return v
     
     class Config:
         from_attributes = True
