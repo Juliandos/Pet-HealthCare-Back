@@ -272,6 +272,14 @@ class UserController:
         """
         Elimina permanentemente un usuario (solo admin)
         ⚠️ Esta acción es IRREVERSIBLE y eliminará todos los datos relacionados
+        
+        Esto elimina automáticamente (por CASCADE):
+        - Mascotas (y todos sus registros relacionados)
+        - Recordatorios
+        - Password resets
+        - Notificaciones asociadas
+        
+        También elimina las fotos físicas de S3 de todas las mascotas del usuario.
         """
         if current_user.role != "admin":
             from app.utils.exceptions import InsufficientPermissionsException
@@ -289,6 +297,31 @@ class UserController:
                 detail="No puedes eliminar tu propia cuenta de administrador"
             )
         
+        # Eliminar fotos de S3 de todas las mascotas del usuario ANTES de eliminar
+        # (las mascotas y sus fotos en BD se eliminarán automáticamente por CASCADE)
+        try:
+            from app.models import Pet, PetPhoto
+            from app.services.s3_service import s3_service
+            
+            user_pets = db.query(Pet).filter(Pet.owner_id == user.id).all()
+            total_photos_deleted = 0
+            
+            for pet in user_pets:
+                pet_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).all()
+                for photo in pet_photos:
+                    if photo.url:
+                        # Extraer s3_key de la URL
+                        url_parts = photo.url.split('.amazonaws.com/')
+                        if len(url_parts) > 1:
+                            s3_key = url_parts[1]
+                            s3_service.delete_image(s3_key)
+                            total_photos_deleted += 1
+            
+            if total_photos_deleted > 0:
+                print(f"✅ Eliminadas {total_photos_deleted} fotos de S3 para {len(user_pets)} mascotas del usuario {user_id}")
+        except Exception as e:
+            print(f"⚠️ Error eliminando fotos de S3 (continuando con eliminación): {str(e)}")
+        
         # Log de auditoría ANTES de eliminar
         audit = AuditLog(
             actor_user_id=current_user.id,
@@ -302,7 +335,7 @@ class UserController:
         )
         db.add(audit)
         
-        # Eliminar usuario (cascade eliminará todos los datos relacionados)
+        # Eliminar usuario (CASCADE eliminará todos los datos relacionados en BD)
         db.delete(user)
         db.commit()
         

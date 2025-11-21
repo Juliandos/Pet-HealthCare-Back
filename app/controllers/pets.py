@@ -104,8 +104,37 @@ class PetController:
     
     @staticmethod
     def delete_pet(db: Session, pet_id: str, current_user: User) -> bool:
-        """Elimina una mascota"""
+        """
+        Elimina una mascota y todos sus registros relacionados
+        
+        Esto elimina automáticamente (por CASCADE):
+        - Fotos (registros en BD)
+        - Vacunaciones
+        - Desparasitaciones
+        - Visitas veterinarias
+        - Planes de nutrición
+        - Comidas
+        - Recordatorios asociados
+        - Notificaciones asociadas
+        
+        También elimina las fotos físicas de S3 antes de eliminar la mascota.
+        """
         pet = PetController.get_pet_by_id(db, pet_id, current_user)
+        
+        # Eliminar fotos de S3 ANTES de eliminar la mascota
+        # (las fotos en BD se eliminarán automáticamente por CASCADE)
+        try:
+            pet_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).all()
+            for photo in pet_photos:
+                if photo.url:
+                    # Extraer s3_key de la URL
+                    url_parts = photo.url.split('.amazonaws.com/')
+                    if len(url_parts) > 1:
+                        s3_key = url_parts[1]
+                        s3_service.delete_image(s3_key)
+            print(f"✅ Eliminadas {len(pet_photos)} fotos de S3 para mascota {pet_id}")
+        except Exception as e:
+            print(f"⚠️ Error eliminando fotos de S3 (continuando con eliminación): {str(e)}")
         
         # Log de auditoría antes de eliminar
         audit = AuditLog(
@@ -117,6 +146,7 @@ class PetController:
         )
         db.add(audit)
         
+        # Eliminar mascota (CASCADE eliminará todos los registros relacionados en BD)
         db.delete(pet)
         db.commit()
         

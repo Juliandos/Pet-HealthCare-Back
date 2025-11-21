@@ -103,7 +103,7 @@ class Vaccination(Base):
     next_due = Column(Date)
     veterinarian = Column(String)
     notes = Column(Text)
-    proof_document_id = Column(UUID(as_uuid=True), ForeignKey("petcare.pet_photos.id"))
+    proof_document_id = Column(UUID(as_uuid=True), ForeignKey("petcare.pet_photos.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now)
 
@@ -138,7 +138,7 @@ class VetVisit(Base):
     treatment = Column(Text)
     follow_up_date = Column(DateTime(timezone=True))
     veterinarian = Column(String)
-    documents_id = Column(UUID(as_uuid=True), ForeignKey("petcare.pet_photos.id"))
+    documents_id = Column(UUID(as_uuid=True), ForeignKey("petcare.pet_photos.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now)
 
@@ -166,7 +166,7 @@ class Meal(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     pet_id = Column(UUID(as_uuid=True), ForeignKey("petcare.pets.id", ondelete="CASCADE"), nullable=False)
-    plan_id = Column(UUID(as_uuid=True), ForeignKey("petcare.nutrition_plans.id"))
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("petcare.nutrition_plans.id", ondelete="SET NULL"))
     meal_time = Column(DateTime(timezone=True), nullable=False)
     description = Column(Text)
     calories = Column(Integer)
