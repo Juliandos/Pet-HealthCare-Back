@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, func
-from app.models import Pet, User, AuditLog
+from app.models import Pet, User, AuditLog, PetPhoto
 from app.schemas.pets import PetCreate, PetUpdate
 from app.services.s3_service import s3_service
 from fastapi import HTTPException, status
+import mimetypes
 
 class PetController:
     """Controlador para operaciones con mascotas"""
@@ -201,7 +202,7 @@ class PetController:
         current_user: User,
         is_profile_photo: bool = False
     ) -> Optional[dict]:
-        """Sube una foto de mascota a S3"""
+        """Sube una foto de mascota a S3 y guarda el registro en pet_photos"""
         # Verificar que la mascota pertenece al usuario
         pet = PetController.get_pet_by_id(db, pet_id, current_user)
         
@@ -222,11 +223,32 @@ class PetController:
         if not result:
             return None
         
-        # Si es foto de perfil, actualizar la mascota
-        if is_profile_photo:
-            # pet.photo_url = result['url']
-            db.commit()
-            db.refresh(pet)
+        # Determinar tipo MIME
+        mime_type, _ = mimetypes.guess_type(filename)
+        if not mime_type:
+            # Fallback basado en extensión
+            extension = filename.lower().split('.')[-1]
+            mime_type_map = {
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg',
+                'png': 'image/png',
+                'gif': 'image/gif',
+                'webp': 'image/webp'
+            }
+            mime_type = mime_type_map.get(extension, 'image/jpeg')
+        
+        # Crear registro en la tabla pet_photos
+        pet_photo = PetPhoto(
+            pet_id=pet.id,
+            file_name=filename,
+            file_size_bytes=result['size'],
+            mime_type=mime_type,
+            url=result['url'],
+            data=None  # No guardamos los bytes en BD, están en S3
+        )
+        db.add(pet_photo)
+        db.commit()
+        db.refresh(pet_photo)
         
         # Log de auditoría
         audit = AuditLog(
@@ -235,6 +257,7 @@ class PetController:
             object_type="Pet",
             object_id=pet.id,
             meta={
+                "photo_id": str(pet_photo.id),
                 "s3_key": result['key'],
                 "size": result['size'],
                 "is_profile": is_profile_photo
@@ -243,40 +266,68 @@ class PetController:
         db.add(audit)
         db.commit()
         
-        return result
+        # Retornar información incluyendo el ID del registro
+        return {
+            **result,
+            "photo_id": str(pet_photo.id)
+        }
     
     @staticmethod
     def delete_pet_photo(
         db: Session,
         pet_id: str,
-        s3_key: str,
+        photo_id: str,
         current_user: User
     ) -> bool:
-        """Elimina una foto de mascota de S3"""
+        """Elimina una foto de mascota de S3 y de la base de datos"""
         # Verificar que la mascota pertenece al usuario
         pet = PetController.get_pet_by_id(db, pet_id, current_user)
         
-        # Eliminar de S3
-        success = s3_service.delete_image(s3_key)
+        # Buscar el registro en pet_photos
+        pet_photo = db.query(PetPhoto).filter(
+            PetPhoto.id == photo_id,
+            PetPhoto.pet_id == pet.id
+        ).first()
         
-        if success:
-            # Si era la foto de perfil, limpiar la URL
-            if pet.photo_url and s3_key in pet.photo_url:
-                pet.photo_url = None
-                db.commit()
-            
-            # Log de auditoría
-            audit = AuditLog(
-                actor_user_id=current_user.id,
-                action="PET_PHOTO_DELETED",
-                object_type="Pet",
-                object_id=pet.id,
-                meta={"s3_key": s3_key}
+        if not pet_photo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Foto no encontrada"
             )
-            db.add(audit)
-            db.commit()
         
-        return success
+        # Extraer s3_key de la URL o usar el campo url
+        s3_key = None
+        if pet_photo.url:
+            # Extraer la clave S3 de la URL
+            # Formato: https://bucket.s3.region.amazonaws.com/pets/{pet_id}/filename.jpg
+            url_parts = pet_photo.url.split('.amazonaws.com/')
+            if len(url_parts) > 1:
+                s3_key = url_parts[1]
+        
+        # Eliminar de S3 si tenemos la clave
+        s3_success = True
+        if s3_key:
+            s3_success = s3_service.delete_image(s3_key)
+        
+        # Eliminar registro de la base de datos
+        db.delete(pet_photo)
+        db.commit()
+        
+        # Log de auditoría
+        audit = AuditLog(
+            actor_user_id=current_user.id,
+            action="PET_PHOTO_DELETED",
+            object_type="Pet",
+            object_id=pet.id,
+            meta={
+                "photo_id": str(photo_id),
+                "s3_key": s3_key or "unknown"
+            }
+        )
+        db.add(audit)
+        db.commit()
+        
+        return s3_success
     
     @staticmethod
     def list_pet_photos(
@@ -284,9 +335,36 @@ class PetController:
         pet_id: str,
         current_user: User
     ) -> list[dict]:
-        """Lista todas las fotos de una mascota"""
+        """Lista todas las fotos de una mascota desde la tabla pet_photos"""
         # Verificar que la mascota pertenece al usuario
-        PetController.get_pet_by_id(db, pet_id, current_user)
+        pet = PetController.get_pet_by_id(db, pet_id, current_user)
         
-        # Listar fotos de S3
-        return s3_service.list_pet_photos(pet_id)
+        # Listar fotos desde la base de datos
+        pet_photos = db.query(PetPhoto).filter(
+            PetPhoto.pet_id == pet.id
+        ).order_by(desc(PetPhoto.created_at)).all()
+        
+        # Convertir a formato de respuesta
+        photos_list = []
+        for photo in pet_photos:
+            # Extraer s3_key de la URL para compatibilidad
+            s3_key = None
+            if photo.url:
+                url_parts = photo.url.split('.amazonaws.com/')
+                if len(url_parts) > 1:
+                    s3_key = url_parts[1]
+            
+            photos_list.append({
+                "id": str(photo.id),
+                "pet_id": str(photo.pet_id),
+                "file_name": photo.file_name,
+                "file_size_bytes": photo.file_size_bytes,
+                "mime_type": photo.mime_type,
+                "url": photo.url,
+                "key": s3_key or photo.url,  # Para compatibilidad con esquema actual
+                "size": photo.file_size_bytes or 0,
+                "last_modified": photo.updated_at.isoformat() if photo.updated_at else photo.created_at.isoformat(),
+                "created_at": photo.created_at.isoformat()
+            })
+        
+        return photos_list

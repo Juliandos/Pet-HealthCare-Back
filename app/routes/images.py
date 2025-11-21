@@ -106,7 +106,8 @@ def get_pet_photos(
     """
     Lista todas las fotos de una mascota
     
-    Retorna información de todas las fotos almacenadas en S3 para esta mascota
+    Retorna información de todas las fotos almacenadas en la tabla pet_photos.
+    Las imágenes físicas están en S3, pero los metadatos se leen desde la base de datos.
     """
     photos = PetController.list_pet_photos(
         db=db,
@@ -116,10 +117,10 @@ def get_pet_photos(
     
     return [PetPhotoListResponse(**photo) for photo in photos]
 
-@router.delete("/pets/{pet_id}/photos", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/pets/{pet_id}/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_pet_photo(
     pet_id: str,
-    s3_key: str = Query(..., description="Clave del archivo en S3 (ej: pets/uuid/image.jpg)"),
+    photo_id: str,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -128,17 +129,17 @@ def delete_pet_photo(
     
     **Parámetros:**
     - `pet_id`: ID de la mascota
-    - `s3_key`: Clave del objeto en S3 (obtenida al listar las fotos)
+    - `photo_id`: ID del registro en pet_photos (obtenido al listar las fotos)
     
     **Ejemplo:**
     ```
-    DELETE /images/pets/{pet_id}/photos?s3_key=pets/uuid/image.jpg
+    DELETE /images/pets/{pet_id}/photos/{photo_id}
     ```
     """
     success = PetController.delete_pet_photo(
         db=db,
         pet_id=pet_id,
-        s3_key=s3_key,
+        photo_id=photo_id,
         current_user=current_user
     )
     
@@ -159,20 +160,32 @@ def delete_all_pet_photos(
     """
     Elimina todas las fotos de una mascota
     
-    ⚠️ **ADVERTENCIA:** Esta acción eliminará permanentemente todas las fotos
+    ⚠️ **ADVERTENCIA:** Esta acción eliminará permanentemente todas las fotos de S3 y de la base de datos
     """
     from app.services.s3_service import s3_service
+    from app.models import PetPhoto
     
     # Verificar que la mascota pertenece al usuario
-    PetController.get_pet_by_id(db, pet_id, current_user)
+    pet = PetController.get_pet_by_id(db, pet_id, current_user)
     
-    # Eliminar todas las fotos
-    success = s3_service.delete_pet_photos(pet_id)
+    # Obtener todas las fotos de la base de datos
+    pet_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).all()
     
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error eliminando las imágenes"
-        )
+    # Eliminar de S3 y de la BD
+    deleted_count = 0
+    for photo in pet_photos:
+        # Extraer s3_key de la URL
+        s3_key = None
+        if photo.url:
+            url_parts = photo.url.split('.amazonaws.com/')
+            if len(url_parts) > 1:
+                s3_key = url_parts[1]
+                s3_service.delete_image(s3_key)
+        
+        # Eliminar registro de la BD
+        db.delete(photo)
+        deleted_count += 1
+    
+    db.commit()
     
     return None
