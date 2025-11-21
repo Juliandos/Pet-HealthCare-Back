@@ -25,6 +25,8 @@ async def upload_pet_profile_photo(
     - Tamaño máximo: 5MB (configurable)
     - Formatos permitidos: jpg, jpeg, png, gif, webp
     - La imagen se optimizará automáticamente
+    - **Solo puede haber 1 foto de perfil por mascota** (se reemplaza la anterior)
+    - **Límite total: 6 fotos (5 galería + 1 perfil)**
     
     **Ejemplo de uso con curl:**
     ```bash
@@ -68,6 +70,8 @@ async def upload_pet_gallery_photo(
     - Tamaño máximo: 5MB (configurable)
     - Formatos permitidos: jpg, jpeg, png, gif, webp
     - La imagen se optimizará automáticamente
+    - **Límite máximo: 5 fotos de galería por mascota**
+    - **Límite total: 6 fotos (5 galería + 1 perfil)**
     
     **Ejemplo de uso con curl:**
     ```bash

@@ -202,9 +202,55 @@ class PetController:
         current_user: User,
         is_profile_photo: bool = False
     ) -> Optional[dict]:
-        """Sube una foto de mascota a S3 y guarda el registro en pet_photos"""
+        """
+        Sube una foto de mascota a S3 y guarda el registro en pet_photos
+        
+        Límites:
+        - Máximo 5 fotos de galería (is_profile=False)
+        - Máximo 6 fotos en total (5 galería + 1 perfil)
+        """
         # Verificar que la mascota pertenece al usuario
         pet = PetController.get_pet_by_id(db, pet_id, current_user)
+        
+        # Contar fotos existentes
+        total_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).count()
+        gallery_photos = db.query(PetPhoto).filter(
+            PetPhoto.pet_id == pet.id,
+            PetPhoto.is_profile == False
+        ).count()
+        profile_photos = db.query(PetPhoto).filter(
+            PetPhoto.pet_id == pet.id,
+            PetPhoto.is_profile == True
+        ).count()
+        
+        # Validar límites ANTES de subir a S3
+        MAX_GALLERY_PHOTOS = 5
+        MAX_TOTAL_PHOTOS = 6
+        
+        if is_profile_photo:
+            # Para foto de perfil: puede reemplazar la existente
+            # Si NO hay foto de perfil y ya hay 6 fotos totales, rechazar
+            # Si YA hay foto de perfil, se reemplazará (no cuenta como nueva foto)
+            if profile_photos == 0 and total_photos >= MAX_TOTAL_PHOTOS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se puede agregar foto de perfil. Ya hay {total_photos} fotos. Límite máximo: {MAX_TOTAL_PHOTOS} fotos totales (5 de galería + 1 de perfil). Elimina alguna foto de galería primero."
+                )
+        else:
+            # Para foto de galería: máximo 5 fotos de galería
+            if gallery_photos >= MAX_GALLERY_PHOTOS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se pueden agregar más fotos de galería. Límite máximo: {MAX_GALLERY_PHOTOS} fotos de galería. Elimina alguna foto existente para agregar una nueva."
+                )
+            
+            # También verificar límite total (5 galería + 1 perfil = 6)
+            # Si ya hay 6 fotos (incluyendo perfil), rechazar
+            if total_photos >= MAX_TOTAL_PHOTOS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se pueden agregar más fotos. Ya hay {total_photos} fotos. Límite máximo: {MAX_TOTAL_PHOTOS} fotos totales (5 de galería + 1 de perfil). Elimina alguna foto existente para agregar una nueva."
+                )
         
         # Subir a S3
         if is_profile_photo:
