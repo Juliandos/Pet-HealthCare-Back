@@ -36,14 +36,17 @@ def calculate_age_years(birth_date: Optional[date]) -> Optional[int]:
 
 def get_pet_profile_photo(db: Session, pet_id: str) -> Optional[str]:
     """
-    Obtiene la URL de la foto de perfil (la más reciente) de una mascota
+    Obtiene la URL de la foto de perfil de una mascota
+    
+    Busca específicamente la foto marcada como is_profile=True.
+    Si no hay foto de perfil, retorna None.
     
     Args:
         db: Sesión de base de datos
         pet_id: ID de la mascota
     
     Returns:
-        URL de la foto más reciente o None si no hay fotos
+        URL de la foto de perfil o None si no hay foto de perfil
     
     Example:
         >>> photo_url = get_pet_profile_photo(db, "pet-uuid")
@@ -54,7 +57,10 @@ def get_pet_profile_photo(db: Session, pet_id: str) -> Optional[str]:
     
     try:
         pet_photo = db.query(PetPhoto)\
-            .filter(PetPhoto.pet_id == pet_id)\
+            .filter(
+                PetPhoto.pet_id == pet_id,
+                PetPhoto.is_profile == True  # ✅ Solo fotos de perfil
+            )\
             .order_by(desc(PetPhoto.created_at))\
             .first()
         

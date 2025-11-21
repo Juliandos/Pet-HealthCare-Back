@@ -35,3 +35,4 @@ class PetPhotoListResponse(BaseModel):
     size: int = Field(..., description="Tamaño del archivo en bytes")
     last_modified: str = Field(..., description="Fecha de última modificación")
     created_at: Optional[str] = Field(None, description="Fecha de creación")
+    is_profile: bool = Field(False, description="True si es foto de perfil, False si es de galería")

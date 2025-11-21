@@ -82,7 +82,7 @@ class PetPhoto(Base):
     file_size_bytes = Column(BigInteger)
     mime_type = Column(String)
     url = Column(String)
-    data = Column(LargeBinary)
+    is_profile = Column(Boolean, default=False, nullable=False)  # True para foto de perfil, False para galería
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now)
 

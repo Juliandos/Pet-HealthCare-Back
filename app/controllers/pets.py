@@ -237,6 +237,13 @@ class PetController:
             }
             mime_type = mime_type_map.get(extension, 'image/jpeg')
         
+        # Si es foto de perfil, desactivar todas las demás fotos de perfil de esta mascota
+        if is_profile_photo:
+            db.query(PetPhoto).filter(
+                PetPhoto.pet_id == pet.id,
+                PetPhoto.is_profile == True
+            ).update({PetPhoto.is_profile: False})
+        
         # Crear registro en la tabla pet_photos
         pet_photo = PetPhoto(
             pet_id=pet.id,
@@ -244,7 +251,7 @@ class PetController:
             file_size_bytes=result['size'],
             mime_type=mime_type,
             url=result['url'],
-            data=None  # No guardamos los bytes en BD, están en S3
+            is_profile=is_profile_photo  # ✅ Guardar si es foto de perfil
         )
         db.add(pet_photo)
         db.commit()
@@ -364,7 +371,8 @@ class PetController:
                 "key": s3_key or photo.url,  # Para compatibilidad con esquema actual
                 "size": photo.file_size_bytes or 0,
                 "last_modified": photo.updated_at.isoformat() if photo.updated_at else photo.created_at.isoformat(),
-                "created_at": photo.created_at.isoformat()
+                "created_at": photo.created_at.isoformat(),
+                "is_profile": photo.is_profile  # ✅ Indicar si es foto de perfil
             })
         
         return photos_list
