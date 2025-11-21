@@ -1,8 +1,8 @@
 # ========================================
 # app/schemas/reminders.py
 # ========================================
-from pydantic import BaseModel, Field, validator
-from typing import Optional
+from pydantic import BaseModel, Field, validator, root_validator
+from typing import Optional, Dict, Any
 from datetime import datetime
 from uuid import UUID
 from app.models import ReminderFrequency
@@ -40,20 +40,29 @@ class ReminderResponse(ReminderBase):
     created_at: datetime
     updated_at: datetime
     
-    @validator('id', 'owner_id', 'pet_id', pre=True)
-    def convert_uuid_to_str(cls, v):
-        """Convierte UUID a string si es necesario"""
-        if v is None:
-            return None
-        if isinstance(v, UUID):
-            return str(v)
-        return v
+    @root_validator(pre=True)
+    def convert_uuids_to_strings(cls, values):
+        """Convierte todos los UUIDs a strings antes de la validación"""
+        if isinstance(values, dict):
+            for key in ['id', 'owner_id', 'pet_id']:
+                if key in values and values[key] is not None:
+                    if isinstance(values[key], UUID):
+                        values[key] = str(values[key])
+        elif hasattr(values, '__dict__'):
+            # Si es un objeto SQLAlchemy, convertir sus atributos
+            for attr in ['id', 'owner_id', 'pet_id']:
+                if hasattr(values, attr):
+                    value = getattr(values, attr)
+                    if isinstance(value, UUID):
+                        setattr(values, attr, str(value))
+        return values
     
     class Config:
         from_attributes = True
         json_encoders = {
             datetime: lambda v: v.isoformat(),
-            ReminderFrequency: lambda v: v.value
+            ReminderFrequency: lambda v: v.value,
+            UUID: lambda v: str(v) if v else None
         }
 
 

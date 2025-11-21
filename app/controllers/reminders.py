@@ -53,6 +53,7 @@ class ReminderController:
         audit = AuditLog(actor_user_id=current_user.id, action="REMINDER_CREATED", object_type="Reminder", object_id=new_item.id)
         db.add(audit)
         db.commit()
+        
         return new_item
     
     @staticmethod
