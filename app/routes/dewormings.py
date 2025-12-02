@@ -20,22 +20,69 @@ def get_all_dewormings(
     db: Session = Depends(get_db)
 ):
     """Obtiene todas las desparasitaciones del usuario"""
-    return DewormingController.get_all(db, current_user, pet_id, skip, limit)
+    dewormings = DewormingController.get_all(db, current_user, pet_id, skip, limit)
+    return [
+        DewormingResponse(
+            id=str(deworming.id),
+            pet_id=str(deworming.pet_id),
+            medication=deworming.medication,
+            date_administered=deworming.date_administered,
+            next_due=deworming.next_due,
+            veterinarian=deworming.veterinarian,
+            notes=deworming.notes,
+            created_at=deworming.created_at,
+            updated_at=deworming.updated_at
+        )
+        for deworming in dewormings
+    ]
 
 @router.get("/{deworming_id}", response_model=DewormingResponse)
 def get_deworming_by_id(deworming_id: str, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Obtiene una desparasitación específica"""
-    return DewormingController.get_by_id(db, deworming_id, current_user)
+    deworming = DewormingController.get_by_id(db, deworming_id, current_user)
+    return DewormingResponse(
+        id=str(deworming.id),
+        pet_id=str(deworming.pet_id),
+        medication=deworming.medication,
+        date_administered=deworming.date_administered,
+        next_due=deworming.next_due,
+        veterinarian=deworming.veterinarian,
+        notes=deworming.notes,
+        created_at=deworming.created_at,
+        updated_at=deworming.updated_at
+    )
 
 @router.post("/", response_model=DewormingResponse, status_code=status.HTTP_201_CREATED)
 def create_deworming(data: DewormingCreate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Crea una nueva desparasitación"""
-    return DewormingController.create(db, data, current_user)
+    deworming = DewormingController.create(db, data, current_user)
+    return DewormingResponse(
+        id=str(deworming.id),
+        pet_id=str(deworming.pet_id),
+        medication=deworming.medication,
+        date_administered=deworming.date_administered,
+        next_due=deworming.next_due,
+        veterinarian=deworming.veterinarian,
+        notes=deworming.notes,
+        created_at=deworming.created_at,
+        updated_at=deworming.updated_at
+    )
 
 @router.put("/{deworming_id}", response_model=DewormingResponse)
 def update_deworming(deworming_id: str, data: DewormingUpdate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Actualiza una desparasitación existente"""
-    return DewormingController.update(db, deworming_id, data, current_user)
+    deworming = DewormingController.update(db, deworming_id, data, current_user)
+    return DewormingResponse(
+        id=str(deworming.id),
+        pet_id=str(deworming.pet_id),
+        medication=deworming.medication,
+        date_administered=deworming.date_administered,
+        next_due=deworming.next_due,
+        veterinarian=deworming.veterinarian,
+        notes=deworming.notes,
+        created_at=deworming.created_at,
+        updated_at=deworming.updated_at
+    )
 
 @router.delete("/{deworming_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_deworming(deworming_id: str, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):

@@ -20,22 +20,81 @@ def get_all_vaccinations(
     db: Session = Depends(get_db)
 ):
     """Obtiene todas las vacunaciones del usuario (opcionalmente filtradas por mascota)"""
-    return VaccinationController.get_all_vaccinations(db, current_user, pet_id, skip, limit)
+    vaccinations = VaccinationController.get_all_vaccinations(db, current_user, pet_id, skip, limit)
+    return [
+        VaccinationResponse(
+            id=str(vaccination.id),
+            pet_id=str(vaccination.pet_id),
+            vaccine_name=vaccination.vaccine_name,
+            manufacturer=vaccination.manufacturer,
+            lot_number=vaccination.lot_number,
+            date_administered=vaccination.date_administered,
+            next_due=vaccination.next_due,
+            veterinarian=vaccination.veterinarian,
+            notes=vaccination.notes,
+            proof_document_id=vaccination.proof_document_id,
+            created_at=vaccination.created_at,
+            updated_at=vaccination.updated_at
+        )
+        for vaccination in vaccinations
+    ]
 
 @router.get("/{vaccination_id}", response_model=VaccinationResponse)
 def get_vaccination_by_id(vaccination_id: str, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Obtiene una vacunación específica por ID"""
-    return VaccinationController.get_vaccination_by_id(db, vaccination_id, current_user)
+    vaccination = VaccinationController.get_vaccination_by_id(db, vaccination_id, current_user)
+    return VaccinationResponse(
+        id=str(vaccination.id),
+        pet_id=str(vaccination.pet_id),
+        vaccine_name=vaccination.vaccine_name,
+        manufacturer=vaccination.manufacturer,
+        lot_number=vaccination.lot_number,
+        date_administered=vaccination.date_administered,
+        next_due=vaccination.next_due,
+        veterinarian=vaccination.veterinarian,
+        notes=vaccination.notes,
+        proof_document_id=vaccination.proof_document_id,
+        created_at=vaccination.created_at,
+        updated_at=vaccination.updated_at
+    )
 
 @router.post("/", response_model=VaccinationResponse, status_code=status.HTTP_201_CREATED)
 def create_vaccination(data: VaccinationCreate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Crea una nueva vacunación"""
-    return VaccinationController.create_vaccination(db, data, current_user)
+    vaccination = VaccinationController.create_vaccination(db, data, current_user)
+    return VaccinationResponse(
+        id=str(vaccination.id),
+        pet_id=str(vaccination.pet_id),
+        vaccine_name=vaccination.vaccine_name,
+        manufacturer=vaccination.manufacturer,
+        lot_number=vaccination.lot_number,
+        date_administered=vaccination.date_administered,
+        next_due=vaccination.next_due,
+        veterinarian=vaccination.veterinarian,
+        notes=vaccination.notes,
+        proof_document_id=vaccination.proof_document_id,
+        created_at=vaccination.created_at,
+        updated_at=vaccination.updated_at
+    )
 
 @router.put("/{vaccination_id}", response_model=VaccinationResponse)
 def update_vaccination(vaccination_id: str, data: VaccinationUpdate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Actualiza una vacunación existente"""
-    return VaccinationController.update_vaccination(db, vaccination_id, data, current_user)
+    vaccination = VaccinationController.update_vaccination(db, vaccination_id, data, current_user)
+    return VaccinationResponse(
+        id=str(vaccination.id),
+        pet_id=str(vaccination.pet_id),
+        vaccine_name=vaccination.vaccine_name,
+        manufacturer=vaccination.manufacturer,
+        lot_number=vaccination.lot_number,
+        date_administered=vaccination.date_administered,
+        next_due=vaccination.next_due,
+        veterinarian=vaccination.veterinarian,
+        notes=vaccination.notes,
+        proof_document_id=vaccination.proof_document_id,
+        created_at=vaccination.created_at,
+        updated_at=vaccination.updated_at
+    )
 
 @router.delete("/{vaccination_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_vaccination(vaccination_id: str, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
