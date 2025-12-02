@@ -82,8 +82,8 @@ def get_pets_summary(
             name=pet.name,
             species=pet.species,
             breed=pet.breed,
-            age_years=pet.age_years,
-            photo_url=pet.photo_url
+            age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
+            photo_url=get_pet_profile_photo(db, pet.id)  # ✅ Consultado
         )
         for pet in pets
     ]
@@ -285,10 +285,10 @@ def get_pet_with_statistics(
         species=pet.species,
         breed=pet.breed,
         birth_date=pet.birth_date,
-        # age_years=pet.age_years,
+        age_years=calculate_age_years(pet.birth_date),  # ✅ Calculado
         weight_kg=pet.weight_kg,
         sex=pet.sex,
-        # photo_url=pet.photo_url,
+        photo_url=get_pet_profile_photo(db, pet.id),  # ✅ Consultado
         notes=pet.notes,
         created_at=pet.created_at.isoformat(),
         updated_at=pet.updated_at.isoformat(),
