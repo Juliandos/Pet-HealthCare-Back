@@ -514,3 +514,130 @@ class EmailService:
         except Exception as e:
             print(f"❌ Error con SMTP: {str(e)}")
             return False
+    
+    @staticmethod
+    def send_reminder_email(email: str, username: str, reminder_title: str, reminder_description: str = None, pet_name: str = None) -> bool:
+        """
+        Envía email de recordatorio
+        
+        Args:
+            email: Email del destinatario
+            username: Nombre del usuario
+            reminder_title: Título del recordatorio
+            reminder_description: Descripción del recordatorio (opcional)
+            pet_name: Nombre de la mascota (opcional)
+        
+        Returns:
+            bool: True si se envió correctamente
+        """
+        subject = f"Recordatorio: {reminder_title} - Pet HealthCare"
+        
+        pet_info = f"<p><strong>Mascota:</strong> {pet_name}</p>" if pet_name else ""
+        description_html = f"<p><strong>Descripción:</strong> {reminder_description}</p>" if reminder_description else ""
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }}
+                .container {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 40px;
+                    border-radius: 10px;
+                    text-align: center;
+                }}
+                .content {{
+                    background: white;
+                    padding: 40px;
+                    border-radius: 8px;
+                    margin-top: 20px;
+                }}
+                .logo {{
+                    font-size: 40px;
+                    margin-bottom: 10px;
+                }}
+                h1 {{
+                    color: #667eea;
+                    margin-bottom: 20px;
+                }}
+                .reminder-box {{
+                    background: #f8f9fa;
+                    border-left: 4px solid #667eea;
+                    padding: 20px;
+                    margin: 20px 0;
+                    border-radius: 5px;
+                }}
+                .footer {{
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid #eee;
+                    font-size: 12px;
+                    color: #666;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="logo">🔔</div>
+                <h2 style="color: white; margin: 0;">Pet HealthCare</h2>
+            </div>
+            
+            <div class="content">
+                <h1>Recordatorio: {reminder_title}</h1>
+                
+                <p>Hola <strong>{username}</strong>,</p>
+                
+                <p>Te recordamos que tienes un evento programado:</p>
+                
+                <div class="reminder-box">
+                    <h2 style="margin-top: 0; color: #667eea;">{reminder_title}</h2>
+                    {pet_info}
+                    {description_html}
+                </div>
+                
+                <p>No olvides atender este recordatorio para mantener la salud de tu mascota al día.</p>
+                
+                <div class="footer">
+                    <p style="margin-top: 20px;">
+                        <strong>Pet HealthCare</strong><br>
+                        Cuidamos de quienes más amas 💚
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+        Recordatorio: {reminder_title} - Pet HealthCare
+        
+        Hola {username},
+        
+        Te recordamos que tienes un evento programado:
+        
+        {reminder_title}
+        {f'Mascota: {pet_name}' if pet_name else ''}
+        {f'Descripción: {reminder_description}' if reminder_description else ''}
+        
+        No olvides atender este recordatorio para mantener la salud de tu mascota al día.
+        
+        ---
+        Pet HealthCare - Cuidamos de quienes más amas
+        """
+        
+        return EmailService._send_email(
+            to_email=email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content
+        )

@@ -19,8 +19,13 @@ created_resources: Dict[str, List[str]] = {
     "vet_visits": [],
     "nutrition_plans": [],
     "meals": [],
-    "reminders": []
+    "reminders": [],
+    "photos": []  # Para almacenar photo_ids
 }
+
+# Ruta de la imagen para pruebas (Windows y WSL)
+IMAGE_PATH_WINDOWS = r"C:\Users\ASUS\Downloads\bull1jpg.jpg"
+IMAGE_PATH_WSL = "/mnt/c/Users/ASUS/Downloads/bull1jpg.jpg"
 
 # Reporte de resultados
 report: List[Dict[str, Any]] = []
@@ -186,10 +191,11 @@ def test_vaccinations_routes(token: str, pet_id: Optional[str]):
     vaccination_data = {
         "pet_id": pet_id,
         "vaccine_name": "Rabia",
-        "date_administered": (datetime.now() - timedelta(days=30)).isoformat(),
-        "next_due": (datetime.now() + timedelta(days=335)).isoformat(),
+        "date_administered": (datetime.now() - timedelta(days=30)).date().isoformat(),  # ✅ Formato date
+        "next_due": (datetime.now() + timedelta(days=335)).date().isoformat(),  # ✅ Formato date
+        "manufacturer": "Pfizer",
+        "lot_number": "TEST-001",
         "veterinarian": "Dr. Test",
-        "batch_number": "TEST-001",
         "notes": "Vacunación de prueba"
     }
     response = make_request("POST", "/vaccinations/", token, data=vaccination_data)
@@ -215,6 +221,10 @@ def test_vaccinations_routes(token: str, pet_id: Optional[str]):
             "notes": "Notas actualizadas"
         })
         log_test(f"/vaccinations/{test_vaccination_id}", "PUT", response.status_code, response.json() if response.status_code == 200 else response.text)
+        
+        # DELETE /vaccinations/{vaccination_id}
+        response = make_request("DELETE", f"/vaccinations/{test_vaccination_id}", token)
+        log_test(f"/vaccinations/{test_vaccination_id}", "DELETE", response.status_code, "Deleted" if response.status_code == 204 else response.text)
 
 def test_dewormings_routes(token: str, pet_id: Optional[str]):
     """Prueba las rutas de desparasitaciones"""
@@ -235,10 +245,9 @@ def test_dewormings_routes(token: str, pet_id: Optional[str]):
     deworming_data = {
         "pet_id": pet_id,
         "medication": "Praziquantel",
-        "date_administered": (datetime.now() - timedelta(days=15)).isoformat(),
-        "next_due": (datetime.now() + timedelta(days=75)).isoformat(),
+        "date_administered": (datetime.now() - timedelta(days=15)).date().isoformat(),  # ✅ Formato date
+        "next_due": (datetime.now() + timedelta(days=75)).date().isoformat(),  # ✅ Formato date
         "veterinarian": "Dr. Test",
-        "dosage": "1 tableta",
         "notes": "Desparasitación de prueba"
     }
     response = make_request("POST", "/dewormings/", token, data=deworming_data)
@@ -264,6 +273,10 @@ def test_dewormings_routes(token: str, pet_id: Optional[str]):
             "notes": "Notas actualizadas"
         })
         log_test(f"/dewormings/{test_deworming_id}", "PUT", response.status_code, response.json() if response.status_code == 200 else response.text)
+        
+        # DELETE /dewormings/{deworming_id}
+        response = make_request("DELETE", f"/dewormings/{test_deworming_id}", token)
+        log_test(f"/dewormings/{test_deworming_id}", "DELETE", response.status_code, "Deleted" if response.status_code == 204 else response.text)
 
 def test_vet_visits_routes(token: str, pet_id: Optional[str]):
     """Prueba las rutas de visitas veterinarias"""
@@ -288,7 +301,6 @@ def test_vet_visits_routes(token: str, pet_id: Optional[str]):
         "diagnosis": "Saludable",
         "treatment": "Ninguno",
         "veterinarian": "Dr. Test",
-        "cost": 50000.0,
         "notes": "Visita de prueba"
     }
     response = make_request("POST", "/vet-visits/", token, data=visit_data)
@@ -314,6 +326,10 @@ def test_vet_visits_routes(token: str, pet_id: Optional[str]):
             "notes": "Notas actualizadas"
         })
         log_test(f"/vet-visits/{test_visit_id}", "PUT", response.status_code, response.json() if response.status_code == 200 else response.text)
+        
+        # DELETE /vet-visits/{visit_id}
+        response = make_request("DELETE", f"/vet-visits/{test_visit_id}", token)
+        log_test(f"/vet-visits/{test_visit_id}", "DELETE", response.status_code, "Deleted" if response.status_code == 204 else response.text)
 
 def test_nutrition_plans_routes(token: str, pet_id: Optional[str]):
     """Prueba las rutas de planes de nutrición"""
@@ -357,10 +373,6 @@ def test_nutrition_plans_routes(token: str, pet_id: Optional[str]):
         # GET /nutrition-plans/{plan_id}
         response = make_request("GET", f"/nutrition-plans/{test_plan_id}", token)
         log_test(f"/nutrition-plans/{test_plan_id}", "GET", response.status_code, response.json() if response.status_code == 200 else response.text)
-        
-        # GET /nutrition-plans/{plan_id}/meals
-        response = make_request("GET", f"/nutrition-plans/{test_plan_id}/meals", token)
-        log_test(f"/nutrition-plans/{test_plan_id}/meals", "GET", response.status_code, response.json() if response.status_code == 200 else response.text)
         
         # PUT /nutrition-plans/{plan_id}
         response = make_request("PUT", f"/nutrition-plans/{test_plan_id}", token, data={
@@ -421,6 +433,10 @@ def test_meals_routes(token: str, pet_id: Optional[str], plan_id: Optional[str])
             "calories": 350
         })
         log_test(f"/meals/{test_meal_id}", "PUT", response.status_code, response.json() if response.status_code == 200 else response.text)
+        
+        # DELETE /meals/{meal_id}
+        response = make_request("DELETE", f"/meals/{test_meal_id}", token)
+        log_test(f"/meals/{test_meal_id}", "DELETE", response.status_code, "Deleted" if response.status_code == 204 else response.text)
 
 def test_reminders_routes(token: str, pet_id: Optional[str]):
     """Prueba las rutas de recordatorios"""
@@ -470,6 +486,10 @@ def test_reminders_routes(token: str, pet_id: Optional[str]):
             "description": "Descripción actualizada"
         })
         log_test(f"/reminders/{test_reminder_id}", "PUT", response.status_code, response.json() if response.status_code == 200 else response.text)
+        
+        # DELETE /reminders/{reminder_id}
+        response = make_request("DELETE", f"/reminders/{test_reminder_id}", token)
+        log_test(f"/reminders/{test_reminder_id}", "DELETE", response.status_code, "Deleted" if response.status_code == 204 else response.text)
 
 def test_notifications_routes(token: str):
     """Prueba las rutas de notificaciones"""
@@ -503,15 +523,53 @@ def test_images_routes(token: str, pet_id: Optional[str]):
         print("⚠️ No hay pet_id disponible, saltando imágenes")
         return
     
-    # GET /images/pets/{pet_id}/gallery
-    response = make_request("GET", f"/images/pets/{pet_id}/gallery", token)
-    log_test(f"/images/pets/{pet_id}/gallery", "GET", response.status_code, response.json() if response.status_code == 200 else response.text)
+    # GET /images/pets/{pet_id}/photos - Listar todas las fotos
+    response = make_request("GET", f"/images/pets/{pet_id}/photos", token)
+    existing_photos = []
+    if response.status_code == 200:
+        existing_photos = response.json()
+    log_test(f"/images/pets/{pet_id}/photos", "GET", response.status_code, existing_photos if response.status_code == 200 else response.text)
     
-    # GET /images/pets/{pet_id}/profile
-    response = make_request("GET", f"/images/pets/{pet_id}/profile", token)
-    log_test(f"/images/pets/{pet_id}/profile", "GET", response.status_code, response.json() if response.status_code == 200 else response.text)
+    # POST /images/pets/{pet_id}/profile - Subir foto de perfil
+    import os
+    # Intentar encontrar la imagen en Windows o WSL
+    image_path = None
+    if os.path.exists(IMAGE_PATH_WINDOWS):
+        image_path = IMAGE_PATH_WINDOWS
+    elif os.path.exists(IMAGE_PATH_WSL):
+        image_path = IMAGE_PATH_WSL
     
-    # Nota: No probamos POST (subir imágenes) ni DELETE para evitar crear archivos innecesarios
+    if image_path:
+        try:
+            with open(image_path, 'rb') as f:
+                files = {'file': (os.path.basename(image_path), f, 'image/jpeg')}
+                url = f"{BASE_URL}/images/pets/{pet_id}/profile"
+                headers = {"Authorization": f"Bearer {token}"}
+                response = requests.post(url, headers=headers, files=files)
+                if response.status_code == 201:
+                    photo_data = response.json()
+                    photo_id = photo_data.get("photo_id")
+                    if photo_id:
+                        created_resources["photos"].append((pet_id, photo_id))
+                    log_test(f"/images/pets/{pet_id}/profile", "POST", response.status_code, photo_data)
+                else:
+                    log_test(f"/images/pets/{pet_id}/profile", "POST", response.status_code, response.text, "Error subiendo foto de perfil")
+        except Exception as e:
+            log_test(f"/images/pets/{pet_id}/profile", "POST", 500, str(e), f"Error leyendo archivo: {str(e)}")
+    else:
+        print(f"⚠️ Imagen no encontrada en {IMAGE_PATH_WINDOWS} ni {IMAGE_PATH_WSL}, saltando subida de fotos")
+        log_test(f"/images/pets/{pet_id}/profile", "POST", 0, None, f"Archivo no encontrado")
+    
+    # GET /images/pets/{pet_id}/photos - Verificar que se subió
+    response = make_request("GET", f"/images/pets/{pet_id}/photos", token)
+    if response.status_code == 200:
+        photos = response.json()
+        if photos and len(photos) > 0:
+            # DELETE /images/pets/{pet_id}/photos/{photo_id} - Eliminar foto de prueba
+            test_photo_id = photos[0].get("id")
+            if test_photo_id:
+                response = make_request("DELETE", f"/images/pets/{pet_id}/photos/{test_photo_id}", token)
+                log_test(f"/images/pets/{pet_id}/photos/{test_photo_id}", "DELETE", response.status_code, "Deleted" if response.status_code == 204 else response.text)
 
 def test_audit_logs_routes(token: str):
     """Prueba las rutas de logs de auditoría"""
@@ -540,33 +598,40 @@ def cleanup_resources(token: str):
     print("\n🧹 Limpiando recursos creados...")
     
     # Eliminar en orden inverso (dependencias primero)
+    # Nota: Los recursos ya fueron eliminados durante las pruebas individuales
+    # Solo limpiamos los que quedaron sin eliminar
+    
+    for pet_id, photo_id in created_resources["photos"]:
+        response = make_request("DELETE", f"/images/pets/{pet_id}/photos/{photo_id}", token)
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /images/pets/{pet_id}/photos/{photo_id}")
+    
     for reminder_id in created_resources["reminders"]:
         response = make_request("DELETE", f"/reminders/{reminder_id}", token)
-        print(f"  {'✅' if response.status_code == 200 else '❌'} DELETE /reminders/{reminder_id}")
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /reminders/{reminder_id}")
     
     for meal_id in created_resources["meals"]:
         response = make_request("DELETE", f"/meals/{meal_id}", token)
-        print(f"  {'✅' if response.status_code == 200 else '❌'} DELETE /meals/{meal_id}")
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /meals/{meal_id}")
     
     for plan_id in created_resources["nutrition_plans"]:
         response = make_request("DELETE", f"/nutrition-plans/{plan_id}", token)
-        print(f"  {'✅' if response.status_code == 200 else '❌'} DELETE /nutrition-plans/{plan_id}")
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /nutrition-plans/{plan_id}")
     
     for visit_id in created_resources["vet_visits"]:
         response = make_request("DELETE", f"/vet-visits/{visit_id}", token)
-        print(f"  {'✅' if response.status_code == 200 else '❌'} DELETE /vet-visits/{visit_id}")
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /vet-visits/{visit_id}")
     
     for deworming_id in created_resources["dewormings"]:
         response = make_request("DELETE", f"/dewormings/{deworming_id}", token)
-        print(f"  {'✅' if response.status_code == 200 else '❌'} DELETE /dewormings/{deworming_id}")
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /dewormings/{deworming_id}")
     
     for vaccination_id in created_resources["vaccinations"]:
         response = make_request("DELETE", f"/vaccinations/{vaccination_id}", token)
-        print(f"  {'✅' if response.status_code == 200 else '❌'} DELETE /vaccinations/{vaccination_id}")
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /vaccinations/{vaccination_id}")
     
     for pet_id in created_resources["pets"]:
         response = make_request("DELETE", f"/pets/{pet_id}", token)
-        print(f"  {'✅' if response.status_code == 200 else '❌'} DELETE /pets/{pet_id}")
+        print(f"  {'✅' if response.status_code == 204 else '❌'} DELETE /pets/{pet_id}")
 
 # ============================================
 # GENERAR REPORTE

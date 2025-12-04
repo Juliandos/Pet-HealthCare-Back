@@ -67,4 +67,14 @@ def delete_reminder(reminder_id: str, current_user: User = Depends(get_current_a
     ReminderController.delete(db, reminder_id, current_user)
     return None
 
+@router.post("/process-due", status_code=status.HTTP_200_OK)
+def process_due_reminders(db: Session = Depends(get_db)):
+    """
+    Procesa recordatorios vencidos: crea notificaciones y envía correos.
+    Este endpoint debe ser llamado periódicamente (por ejemplo, cada minuto o cada 5 minutos)
+    por un sistema de tareas programadas (cron job) o servicio de background tasks.
+    """
+    result = ReminderController.process_due_reminders(db)
+    return result
+
 
