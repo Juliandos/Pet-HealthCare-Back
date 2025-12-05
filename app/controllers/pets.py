@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, func
-from app.models import Pet, User, AuditLog, PetPhoto
+from app.models import Pet, User, AuditLog, PetPhoto, Vaccination, Deworming, VetVisit, NutritionPlan, Meal, Reminder, Notification
 from app.schemas.pets import PetCreate, PetUpdate
 from app.services.s3_service import s3_service
 from fastapi import HTTPException, status
@@ -121,7 +121,21 @@ class PetController:
         """
         pet = PetController.get_pet_by_id(db, pet_id, current_user)
         
-        # IMPORTANTE: Eliminar manualmente las fotos de la BD ANTES de eliminar la mascota
+        # IMPORTANTE: Limpiar registros corruptos ANTES de eliminar la mascota
+        # Esto evita errores de integridad referencial
+        try:
+            # Limpiar vacunaciones corruptas (con pet_id null)
+            corrupt_vaccinations = db.query(Vaccination).filter(Vaccination.pet_id.is_(None)).all()
+            if corrupt_vaccinations:
+                print(f"⚠️ Encontradas {len(corrupt_vaccinations)} vacunaciones corruptas con pet_id=null, eliminándolas...")
+                for vac in corrupt_vaccinations:
+                    db.delete(vac)
+                db.commit()
+        except Exception as e:
+            print(f"⚠️ Error limpiando vacunaciones corruptas: {str(e)}")
+            db.rollback()
+        
+        # Eliminar manualmente las fotos de la BD ANTES de eliminar la mascota
         # Esto evita problemas con registros corruptos o referencias circulares
         try:
             pet_photos = db.query(PetPhoto).filter(PetPhoto.pet_id == pet.id).all()
@@ -146,26 +160,48 @@ class PetController:
             print(f"⚠️ Error eliminando fotos (continuando con eliminación): {str(e)}")
             db.rollback()
         
-        # Limpiar cualquier registro corrupto de pet_photos con pet_id = null relacionado
-        # (aunque no debería haber, por seguridad)
+        # Eliminar manualmente todos los registros relacionados para asegurar limpieza completa
+        # Esto es redundante con CASCADE pero asegura que no haya problemas
         try:
-            corrupt_photos = db.query(PetPhoto).filter(PetPhoto.pet_id.is_(None)).all()
-            if corrupt_photos:
-                print(f"⚠️ Encontrados {len(corrupt_photos)} registros corruptos de pet_photos con pet_id=null, eliminándolos...")
-                for corrupt_photo in corrupt_photos:
-                    # Intentar eliminar de S3 si tiene URL
-                    if corrupt_photo.url:
-                        try:
-                            url_parts = corrupt_photo.url.split('.amazonaws.com/')
-                            if len(url_parts) > 1:
-                                s3_key = url_parts[1]
-                                s3_service.delete_image(s3_key)
-                        except:
-                            pass
-                    db.delete(corrupt_photo)
-                db.commit()
+            # Eliminar vacunaciones
+            vaccinations = db.query(Vaccination).filter(Vaccination.pet_id == pet.id).all()
+            for vac in vaccinations:
+                db.delete(vac)
+            
+            # Eliminar desparasitaciones
+            dewormings = db.query(Deworming).filter(Deworming.pet_id == pet.id).all()
+            for dew in dewormings:
+                db.delete(dew)
+            
+            # Eliminar visitas veterinarias
+            vet_visits = db.query(VetVisit).filter(VetVisit.pet_id == pet.id).all()
+            for visit in vet_visits:
+                db.delete(visit)
+            
+            # Eliminar comidas (antes que planes de nutrición)
+            meals = db.query(Meal).filter(Meal.pet_id == pet.id).all()
+            for meal in meals:
+                db.delete(meal)
+            
+            # Eliminar planes de nutrición
+            nutrition_plans = db.query(NutritionPlan).filter(NutritionPlan.pet_id == pet.id).all()
+            for plan in nutrition_plans:
+                db.delete(plan)
+            
+            # Eliminar recordatorios asociados a esta mascota
+            reminders = db.query(Reminder).filter(Reminder.pet_id == pet.id).all()
+            for reminder in reminders:
+                db.delete(reminder)
+            
+            # Eliminar notificaciones asociadas a esta mascota
+            notifications = db.query(Notification).filter(Notification.pet_id == pet.id).all()
+            for notif in notifications:
+                db.delete(notif)
+            
+            db.commit()
+            print(f"✅ Eliminados registros relacionados para mascota {pet_id}")
         except Exception as e:
-            print(f"⚠️ Error limpiando registros corruptos: {str(e)}")
+            print(f"⚠️ Error eliminando registros relacionados (continuando): {str(e)}")
             db.rollback()
         
         # Log de auditoría antes de eliminar
@@ -178,7 +214,7 @@ class PetController:
         )
         db.add(audit)
         
-        # Eliminar mascota (CASCADE eliminará todos los demás registros relacionados en BD)
+        # Eliminar mascota (CASCADE debería eliminar el resto, pero ya lo hicimos manualmente)
         db.delete(pet)
         db.commit()
         

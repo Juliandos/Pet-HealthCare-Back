@@ -206,7 +206,7 @@ class Notification(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     reminder_id = Column(UUID(as_uuid=True), ForeignKey("petcare.reminders.id", ondelete="SET NULL"))
     owner_id = Column(UUID(as_uuid=True), ForeignKey("petcare.users.id", ondelete="SET NULL"))
-    pet_id = Column(UUID(as_uuid=True), ForeignKey("petcare.pets.id", ondelete="SET NULL"))
+    pet_id = Column(UUID(as_uuid=True), ForeignKey("petcare.pets.id", ondelete="CASCADE"))
     sent_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now)
     method = Column(String)
     status = Column(String)
