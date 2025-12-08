@@ -198,7 +198,7 @@ class PetController:
             for notif in notifications:
                 db.delete(notif)
             
-            db.commit()
+                db.commit()
             print(f"✅ Eliminados registros relacionados para mascota {pet_id}")
         except Exception as e:
             print(f"⚠️ Error eliminando registros relacionados (continuando): {str(e)}")

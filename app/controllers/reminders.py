@@ -94,7 +94,7 @@ class ReminderController:
         db.delete(reminder)
         db.commit()
         return True
-    
+
     @staticmethod
     def process_due_reminders(db: Session) -> dict:
         """
