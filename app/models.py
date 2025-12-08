@@ -83,6 +83,9 @@ class PetPhoto(Base):
     mime_type = Column(String)
     url = Column(String)
     is_profile = Column(Boolean, default=False, nullable=False)  # True para foto de perfil, False para galería
+    file_type = Column(String, default="image", nullable=False)  # 'image' o 'document'
+    document_category = Column(String)  # 'vaccination', 'vet_visit', 'lab_result', 'general', etc.
+    description = Column(Text)  # Descripción opcional del documento
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now)
 

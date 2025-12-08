@@ -51,5 +51,12 @@ class Settings:
         "ALLOWED_IMAGE_EXTENSIONS", 
         "jpg,jpeg,png,gif,webp"
     ).split(",")
+    
+    # Document Configuration
+    MAX_DOCUMENT_SIZE_MB: int = int(os.getenv("MAX_DOCUMENT_SIZE_MB", "10"))
+    ALLOWED_DOCUMENT_EXTENSIONS: list = os.getenv(
+        "ALLOWED_DOCUMENT_EXTENSIONS",
+        "pdf"
+    ).split(",")
 
 settings = Settings()

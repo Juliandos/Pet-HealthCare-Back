@@ -395,7 +395,8 @@ class PetController:
             file_size_bytes=result['size'],
             mime_type=mime_type,
             url=result['url'],
-            is_profile=is_profile_photo  # ✅ Guardar si es foto de perfil
+            is_profile=is_profile_photo,  # ✅ Guardar si es foto de perfil
+            file_type="image"  # ✅ Tipo de archivo: image
         )
         db.add(pet_photo)
         db.commit()
@@ -516,7 +517,97 @@ class PetController:
                 "size": photo.file_size_bytes or 0,
                 "last_modified": photo.updated_at.isoformat() if photo.updated_at else photo.created_at.isoformat(),
                 "created_at": photo.created_at.isoformat(),
-                "is_profile": photo.is_profile  # ✅ Indicar si es foto de perfil
+                "is_profile": photo.is_profile,  # ✅ Indicar si es foto de perfil
+                "file_type": photo.file_type or "image",  # ✅ Tipo de archivo
+                "document_category": photo.document_category,  # ✅ Categoría del documento (si aplica)
+                "description": photo.description  # ✅ Descripción del documento (si aplica)
             })
         
         return photos_list
+    
+    @staticmethod
+    def upload_pet_document(
+        db: Session,
+        pet_id: str,
+        file_content: bytes,
+        filename: str,
+        current_user: User,
+        document_category: Optional[str] = None,
+        description: Optional[str] = None
+    ) -> Optional[dict]:
+        """
+        Sube un documento (PDF) de mascota a S3 y guarda el registro en pet_photos
+        
+        Args:
+            db: Sesión de base de datos
+            pet_id: ID de la mascota
+            file_content: Contenido binario del archivo
+            filename: Nombre del archivo
+            current_user: Usuario actual
+            document_category: Categoría del documento (vaccination, vet_visit, lab_result, general)
+            description: Descripción opcional del documento
+        
+        Returns:
+            Dict con información del documento subido
+        """
+        # Verificar que la mascota pertenece al usuario
+        pet = PetController.get_pet_by_id(db, pet_id, current_user)
+        
+        # Subir documento a S3
+        result = s3_service.upload_document(
+            file_content=file_content,
+            filename=filename,
+            pet_id=pet_id
+        )
+        
+        if not result:
+            return None
+        
+        # Determinar tipo MIME
+        mime_type, _ = mimetypes.guess_type(filename)
+        if not mime_type:
+            extension = filename.lower().split('.')[-1]
+            mime_type_map = {
+                'pdf': 'application/pdf'
+            }
+            mime_type = mime_type_map.get(extension, 'application/octet-stream')
+        
+        # Crear registro en la tabla pet_photos
+        pet_photo = PetPhoto(
+            pet_id=pet.id,
+            file_name=filename,
+            file_size_bytes=result['size'],
+            mime_type=mime_type,
+            url=result['url'],
+            is_profile=False,  # Los documentos no son fotos de perfil
+            file_type="document",  # ✅ Tipo de archivo: document
+            document_category=document_category,
+            description=description
+        )
+        db.add(pet_photo)
+        db.commit()
+        db.refresh(pet_photo)
+        
+        # Log de auditoría
+        audit = AuditLog(
+            actor_user_id=current_user.id,
+            action="PET_DOCUMENT_UPLOADED",
+            object_type="Pet",
+            object_id=pet.id,
+            meta={
+                "photo_id": str(pet_photo.id),
+                "s3_key": result['key'],
+                "size": result['size'],
+                "document_category": document_category
+            }
+        )
+        db.add(audit)
+        db.commit()
+        
+        # Retornar información incluyendo el ID del registro
+        return {
+            **result,
+            "photo_id": str(pet_photo.id),
+            "file_type": "document",
+            "document_category": document_category
+        }

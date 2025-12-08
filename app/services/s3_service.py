@@ -315,6 +315,106 @@ class S3Service:
         except ClientError as e:
             print(f"❌ Error eliminando fotos: {str(e)}")
             return False
+    
+    def validate_document(self, file_content: bytes, filename: str) -> tuple[bool, str]:
+        """
+        Valida un documento (PDF) antes de subirlo
+        
+        Args:
+            file_content: Contenido binario del archivo
+            filename: Nombre del archivo
+        
+        Returns:
+            (is_valid, error_message)
+        """
+        # Verificar tamaño
+        size_mb = len(file_content) / (1024 * 1024)
+        if size_mb > settings.MAX_DOCUMENT_SIZE_MB:
+            return False, f"El documento excede el tamaño máximo de {settings.MAX_DOCUMENT_SIZE_MB}MB"
+        
+        # Verificar extensión
+        extension = filename.lower().split('.')[-1]
+        if extension not in settings.ALLOWED_DOCUMENT_EXTENSIONS:
+            return False, f"Extensión no permitida. Use: {', '.join(settings.ALLOWED_DOCUMENT_EXTENSIONS)}"
+        
+        # Verificar que sea un PDF válido (verificar header PDF)
+        if extension == 'pdf':
+            # Los PDFs comienzan con %PDF-
+            if not file_content.startswith(b'%PDF-'):
+                return False, "El archivo no es un PDF válido"
+        
+        return True, ""
+    
+    def upload_document(
+        self,
+        file_content: bytes,
+        filename: str,
+        pet_id: str
+    ) -> Optional[dict]:
+        """
+        Sube un documento (PDF) a S3
+        
+        Args:
+            file_content: Contenido binario del archivo
+            filename: Nombre original del archivo
+            pet_id: ID de la mascota
+        
+        Returns:
+            Dict con información del archivo subido:
+            {
+                "url": "https://...",
+                "key": "pets/uuid/filename.pdf",
+                "size": 12345,
+                "bucket": "bucket-name"
+            }
+        """
+        # Validar documento
+        is_valid, error = self.validate_document(file_content, filename)
+        if not is_valid:
+            print(f"❌ Documento inválido: {error}")
+            return None
+        
+        # Generar nombre único
+        extension = filename.lower().split('.')[-1]
+        unique_filename = f"{uuid.uuid4()}.{extension}"
+        s3_key = f"pets/{pet_id}/documents/{unique_filename}"
+        
+        # Determinar ContentType
+        content_type_map = {
+            'pdf': 'application/pdf'
+        }
+        content_type = content_type_map.get(extension, 'application/octet-stream')
+        
+        try:
+            # Subir a S3
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=s3_key,
+                Body=file_content,
+                ContentType=content_type,
+                Metadata={
+                    'pet_id': pet_id,
+                    'original_filename': filename,
+                    'uploaded_at': datetime.utcnow().isoformat(),
+                    'file_type': 'document'
+                }
+            )
+            
+            # Generar URL
+            url = f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{s3_key}"
+            
+            print(f"✅ Documento subido exitosamente: {url}")
+            
+            return {
+                "url": url,
+                "key": s3_key,
+                "size": len(file_content),
+                "bucket": self.bucket_name
+            }
+        
+        except ClientError as e:
+            print(f"❌ Error subiendo documento a S3: {str(e)}")
+            return None
 
 # Instancia global del servicio
 s3_service = S3Service()

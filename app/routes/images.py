@@ -1,12 +1,12 @@
 # ========================================
 # app/routes/images.py
 # ========================================
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Query
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Query, Form
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.middleware.auth import get_db, get_current_active_user
 from app.controllers.pets import PetController
-from app.schemas.images import ImageUploadResponse, PetPhotoListResponse
+from app.schemas.images import ImageUploadResponse, PetPhotoListResponse, DocumentUploadResponse
 from app.models import User
 
 router = APIRouter(prefix="/images", tags=["Imágenes"])
@@ -254,3 +254,139 @@ def delete_all_pet_photos(
     db.commit()
     
     return None
+
+# ========================================
+# RUTAS PARA DOCUMENTOS (PDFs)
+# ========================================
+
+@router.post("/pets/{pet_id}/documents", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_pet_document(
+    pet_id: str,
+    file: UploadFile = File(...),
+    document_category: Optional[str] = Form(None, description="Categoría: vaccination, vet_visit, lab_result, general"),
+    description: Optional[str] = Form(None, description="Descripción opcional del documento"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Sube un documento PDF al historial de una mascota
+    
+    **Restricciones:**
+    - Tamaño máximo: 10MB (configurable)
+    - Formato permitido: PDF
+    - Se almacena en AWS S3
+    
+    **Categorías disponibles:**
+    - `vaccination`: Documentos relacionados con vacunaciones
+    - `vet_visit`: Documentos de visitas veterinarias
+    - `lab_result`: Resultados de laboratorio
+    - `general`: Documentos generales del historial
+    
+    **Ejemplo de uso con curl:**
+    ```bash
+    curl -X POST "http://localhost:8000/images/pets/{pet_id}/documents" \
+      -H "Authorization: Bearer YOUR_TOKEN" \
+      -F "file=@/path/to/document.pdf" \
+      -F "document_category=vaccination" \
+      -F "description=Certificado de vacunación"
+    ```
+    """
+    # Leer contenido del archivo
+    file_content = await file.read()
+    
+    # Validar que el archivo no esté vacío
+    if len(file_content) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo está vacío"
+        )
+    
+    # Validar categoría si se proporciona
+    valid_categories = ["vaccination", "vet_visit", "lab_result", "general", None]
+    if document_category and document_category not in valid_categories:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Categoría inválida. Use una de: {', '.join([c for c in valid_categories if c])}"
+        )
+    
+    # Subir documento
+    result = PetController.upload_pet_document(
+        db=db,
+        pet_id=pet_id,
+        file_content=file_content,
+        filename=file.filename or "document.pdf",
+        current_user=current_user,
+        document_category=document_category,
+        description=description
+    )
+    
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error subiendo el documento. Verifica el formato (debe ser PDF) y tamaño (máx 10MB)."
+        )
+    
+    return DocumentUploadResponse(**result)
+
+@router.get("/pets/{pet_id}/documents", response_model=List[PetPhotoListResponse])
+def get_pet_documents(
+    pet_id: str,
+    category: Optional[str] = Query(None, description="Filtrar por categoría"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Lista todos los documentos (PDFs) de una mascota
+    
+    **Filtros disponibles:**
+    - `category`: Filtrar por categoría (vaccination, vet_visit, lab_result, general)
+    
+    Retorna solo documentos (file_type='document'), no imágenes.
+    """
+    from app.models import PetPhoto
+    from sqlalchemy import desc
+    
+    # Verificar que la mascota pertenece al usuario
+    pet = PetController.get_pet_by_id(db, pet_id, current_user)
+    
+    # Consultar documentos (file_type='document')
+    query = db.query(PetPhoto).filter(
+        PetPhoto.pet_id == pet.id,
+        PetPhoto.file_type == "document"
+    )
+    
+    # Filtrar por categoría si se proporciona
+    if category:
+        query = query.filter(PetPhoto.document_category == category)
+    
+    # Ordenar por fecha de creación descendente
+    documents = query.order_by(desc(PetPhoto.created_at)).all()
+    
+    # Convertir a formato de respuesta
+    documents_list = []
+    for doc in documents:
+        # Extraer s3_key de la URL
+        s3_key = None
+        if doc.url:
+            url_parts = doc.url.split('.amazonaws.com/')
+            if len(url_parts) > 1:
+                s3_key = url_parts[1]
+        
+        documents_list.append({
+            "id": str(doc.id),
+            "pet_id": str(doc.pet_id),
+            "file_name": doc.file_name,
+            "file_size_bytes": doc.file_size_bytes,
+            "mime_type": doc.mime_type,
+            "url": doc.url,
+            "key": s3_key or doc.url,
+            "size": doc.file_size_bytes or 0,
+            "last_modified": doc.updated_at.isoformat() if doc.updated_at else doc.created_at.isoformat(),
+            "created_at": doc.created_at.isoformat(),
+            "is_profile": False,
+            "file_type": doc.file_type or "document",
+            "document_category": doc.document_category,
+            "description": doc.description
+        })
+    
+    return [PetPhotoListResponse(**doc) for doc in documents_list]
