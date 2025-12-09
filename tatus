@@ -54,12 +54,11 @@ uvicorn==0.38.0
 uvloop==0.22.1
 watchfiles==1.1.1
 websockets==15.0.1
-
 # LangChain y dependencias para IA
 langchain==0.1.13
 langchain-openai==0.0.6
 langchain-community==0.0.29
-langsmith==0.1.17
+langsmith==0.1.0
 pgvector==0.4.1
 psycopg==3.2.10
 unstructured[all-docs]==0.18.15

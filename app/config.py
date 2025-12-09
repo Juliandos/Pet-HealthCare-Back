@@ -58,5 +58,21 @@ class Settings:
         "ALLOWED_DOCUMENT_EXTENSIONS",
         "pdf"
     ).split(",")
+    
+    # OpenAI Configuration (para LangChain)
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    OPENAI_TEMPERATURE: float = float(os.getenv("OPENAI_TEMPERATURE", "0.0"))
+    
+    # LangSmith Configuration (opcional - para monitoreo)
+    LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "")
+    LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "pet-healthcare")
+    LANGSMITH_TRACING: bool = os.getenv("LANGSMITH_TRACING", "false").lower() == "true"
+    
+    # RAG Configuration (opcional)
+    RAG_CHUNK_SIZE: int = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
+    RAG_CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
+    RAG_TOP_K_RESULTS: int = int(os.getenv("RAG_TOP_K_RESULTS", "4"))
 
 settings = Settings()
