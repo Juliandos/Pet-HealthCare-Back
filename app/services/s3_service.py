@@ -5,6 +5,7 @@ Maneja subida, eliminación y obtención de URLs de imágenes
 import boto3
 import io
 import uuid
+import base64
 from typing import Optional, BinaryIO
 from datetime import datetime, timedelta
 from PIL import Image
@@ -29,6 +30,25 @@ class S3Service:
         
         self.s3_client = boto3.client('s3', **s3_config)
         self.bucket_name = settings.AWS_S3_BUCKET
+    
+    def _encode_filename_for_metadata(self, filename: str) -> str:
+        """
+        Codifica el nombre del archivo para metadatos de S3 (solo ASCII permitido)
+        
+        Args:
+            filename: Nombre del archivo original
+            
+        Returns:
+            Nombre codificado en ASCII (usando base64)
+        """
+        try:
+            # Intentar codificar a ASCII directamente
+            filename.encode('ascii')
+            return filename
+        except UnicodeEncodeError:
+            # Si tiene caracteres no-ASCII, codificar en base64
+            encoded = base64.b64encode(filename.encode('utf-8')).decode('ascii')
+            return f"base64:{encoded}"
     
     def validate_image(self, file_content: bytes, filename: str) -> tuple[bool, str]:
         """
@@ -144,7 +164,7 @@ class S3Service:
                 ContentType=f"image/{extension}",
                 Metadata={
                     'pet_id': pet_id,
-                    'original_filename': filename,
+                    'original_filename': self._encode_filename_for_metadata(filename),
                     'uploaded_at': datetime.utcnow().isoformat()
                 }
             )
@@ -394,7 +414,7 @@ class S3Service:
                 ContentType=content_type,
                 Metadata={
                     'pet_id': pet_id,
-                    'original_filename': filename,
+                    'original_filename': self._encode_filename_for_metadata(filename),
                     'uploaded_at': datetime.utcnow().isoformat(),
                     'file_type': 'document'
                 }
