@@ -144,15 +144,24 @@ class LangChainService:
         
         # Cargar documentos
         print(f"📄 Cargando {len(pdf_urls)} PDF(s) para la mascota {pet_id}...")
+        for i, url in enumerate(pdf_urls, 1):
+            print(f"   [{i}/{len(pdf_urls)}] {url}")
         documents = self._load_pdf_documents(pdf_urls)
         
         if not documents:
             raise ValueError("No se pudieron cargar documentos de los PDFs")
         
+        print(f"✅ Cargados {len(documents)} documentos (páginas totales)")
+        total_chars = sum(len(doc.page_content) for doc in documents)
+        print(f"   Total de caracteres: {total_chars:,}")
+        
         # Dividir en chunks
         print(f"✂️ Dividiendo documentos en chunks...")
         chunks = self.text_splitter.split_documents(documents)
         print(f"✅ Creados {len(chunks)} chunks")
+        if chunks:
+            avg_chunk_size = sum(len(chunk.page_content) for chunk in chunks) / len(chunks)
+            print(f"   Tamaño promedio de chunk: {avg_chunk_size:.0f} caracteres")
         
         # Crear nombre de colección único por mascota
         if not collection_name:
@@ -236,7 +245,9 @@ class LangChainService:
             search_kwargs={"k": settings.RAG_TOP_K_RESULTS}
         )
         
-        # Prompt personalizado para que la IA use SOLO los documentos
+        # Prompt personalizado que incluye historial de conversación
+        # Este prompt se usa para combinar documentos, pero ConversationalRetrievalChain
+        # maneja el historial automáticamente a través de la memoria
         qa_prompt = PromptTemplate(
             template="""Eres un asistente veterinario especializado en el cuidado de mascotas. 
 Tu trabajo es responder preguntas sobre la salud y el historial médico de las mascotas basándote ÚNICAMENTE en los documentos proporcionados.
@@ -246,6 +257,7 @@ IMPORTANTE:
 - Si la información no está en los documentos, di claramente "No encontré esa información en los documentos de la mascota"
 - Sé específico y menciona fechas, medicamentos, tratamientos, vacunaciones, etc. cuando estén disponibles en los documentos
 - Si no sabes la respuesta basándote en los documentos, di que no encontraste esa información
+- Puedes hacer referencia a preguntas y respuestas anteriores de esta conversación si es relevante
 
 Fragmentos de documentos relevantes:
 {context}
@@ -257,6 +269,7 @@ Respuesta basada únicamente en los documentos:""",
         )
         
         # Crear cadena conversacional con prompt personalizado
+        # ConversationalRetrievalChain maneja automáticamente la memoria
         chain = ConversationalRetrievalChain.from_llm(
             llm=self.llm,
             retriever=retriever,
@@ -285,18 +298,56 @@ Respuesta basada únicamente en los documentos:""",
         Returns:
             Dict con la respuesta y documentos fuente
         """
+        # Verificar que hay documentos en el vector store antes de hacer la pregunta
+        print(f"🔍 Verificando vector store...")
+        try:
+            # Hacer una búsqueda de prueba para verificar que hay documentos
+            test_docs = vector_store.similarity_search("test", k=1)
+            print(f"✅ Vector store tiene documentos: {len(test_docs)} documentos encontrados en búsqueda de prueba")
+        except Exception as e:
+            print(f"⚠️ Error verificando vector store: {str(e)}")
+        
         # Crear cadena conversacional
         chain = self.create_conversation_chain(vector_store, memory)
         
         # Hacer pregunta
         print(f"❓ Procesando pregunta: {question}")
         print(f"🔍 Buscando en {settings.RAG_TOP_K_RESULTS} documentos más relevantes...")
+        
+        # Verificar historial antes de la pregunta
+        if memory:
+            history_before = self._extract_chat_history(memory)
+            print(f"📚 Historial antes de la pregunta: {len(history_before)} mensajes")
+            if history_before:
+                print(f"📝 Último mensaje del historial: {history_before[-1]}")
+        
+        # ConversationalRetrievalChain debería actualizar la memoria automáticamente
         result = chain.invoke({"question": question})
-        print(f"✅ Respuesta generada")
+        print(f"✅ Respuesta generada: {result.get('answer', '')[:100]}...")
         
         # Obtener documentos fuente
         source_docs = result.get("source_documents", [])
         print(f"📄 Documentos fuente encontrados: {len(source_docs)}")
+        
+        # Verificar historial después de la pregunta
+        if memory:
+            history_after = self._extract_chat_history(memory)
+            print(f"📚 Historial después de la pregunta: {len(history_after)} mensajes")
+            if history_after:
+                print(f"📝 Últimos 2 mensajes del historial:")
+                for msg in history_after[-2:]:
+                    print(f"   - {msg['role']}: {msg['content'][:50]}...")
+            else:
+                print(f"⚠️ ADVERTENCIA: El historial está vacío después de la pregunta")
+                # Intentar debug: ver qué tiene la memoria
+                try:
+                    if hasattr(memory, 'chat_memory'):
+                        print(f"   Debug - chat_memory.messages: {len(memory.chat_memory.messages) if hasattr(memory.chat_memory, 'messages') else 'N/A'}")
+                    memory_vars = memory.load_memory_variables({})
+                    print(f"   Debug - memory_vars keys: {list(memory_vars.keys())}")
+                    print(f"   Debug - chat_history type: {type(memory_vars.get('chat_history', None))}")
+                except Exception as e:
+                    print(f"   Debug error: {str(e)}")
         
         return {
             "answer": result.get("answer", ""),
@@ -323,23 +374,39 @@ Respuesta basada únicamente en los documentos:""",
         """
         history = []
         try:
-            # Intentar acceder al historial de diferentes formas según la versión de LangChain
-            if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
-                messages = memory.chat_memory.messages
-            elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
-                messages = memory.buffer.messages
-            elif hasattr(memory, 'chat_history'):
-                messages = memory.chat_history.messages if hasattr(memory.chat_history, 'messages') else []
-            else:
-                # Intentar cargar desde variables de memoria
-                memory_vars = memory.load_memory_variables({})
-                messages = memory_vars.get('chat_history', [])
+            # Método más confiable: usar load_memory_variables primero
+            memory_vars = memory.load_memory_variables({})
+            chat_history = memory_vars.get('chat_history', [])
             
+            # Si chat_history es una lista de mensajes
+            if isinstance(chat_history, list) and len(chat_history) > 0:
+                messages = chat_history
+            # Si chat_history es un string (formato antiguo), intentar parsearlo
+            elif isinstance(chat_history, str) and chat_history.strip():
+                # Intentar acceder directamente a los mensajes
+                if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
+                    messages = memory.chat_memory.messages
+                elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
+                    messages = memory.buffer.messages
+                else:
+                    messages = []
+            else:
+                # Intentar acceder directamente a los mensajes
+                if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
+                    messages = memory.chat_memory.messages
+                elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
+                    messages = memory.buffer.messages
+                elif hasattr(memory, 'chat_history'):
+                    messages = memory.chat_history.messages if hasattr(memory.chat_history, 'messages') else []
+                else:
+                    messages = []
+            
+            # Procesar mensajes
             for msg in messages:
                 if hasattr(msg, 'content'):
                     # Determinar el rol del mensaje
                     msg_type = type(msg).__name__
-                    if 'Human' in msg_type or 'user' in msg_type.lower():
+                    if 'Human' in msg_type or 'user' in msg_type.lower() or 'HumanMessage' in msg_type:
                         role = "user"
                     elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
                         role = "assistant"
@@ -350,9 +417,12 @@ Respuesta basada únicamente en los documentos:""",
                         "role": role,
                         "content": msg.content
                     })
+                    
         except Exception as e:
             # Si hay error, retornar lista vacía
             print(f"⚠️ Error extrayendo historial: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
         
         return history

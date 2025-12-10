@@ -74,5 +74,8 @@ class Settings:
     RAG_CHUNK_SIZE: int = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
     RAG_CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
     RAG_TOP_K_RESULTS: int = int(os.getenv("RAG_TOP_K_RESULTS", "4"))
+    
+    # Chat Memory Configuration
+    CHAT_MEMORY_MAX_MESSAGES: int = int(os.getenv("CHAT_MEMORY_MAX_MESSAGES", "10"))  # Máximo de mensajes a recordar
 
 settings = Settings()

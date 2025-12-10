@@ -7,6 +7,7 @@ from app.models import User, Pet
 from app.services.langchain_service import LangChainService
 from app.controllers.pets import PetController
 from langchain.memory import ConversationBufferMemory
+from langchain_core.messages import HumanMessage, AIMessage
 import uuid
 
 class ChatController:
@@ -88,13 +89,18 @@ class ChatController:
             session_id = f"{current_user.id}_{pet_id}"
         
         if session_id not in ChatController._conversation_memories:
+            from app.config import settings
             ChatController._conversation_memories[session_id] = ConversationBufferMemory(
                 memory_key="chat_history",
                 return_messages=True,
-                output_key="answer"
+                output_key="answer",
+                max_token_limit=2000  # Limitar tokens para evitar memoria excesiva
             )
         
         memory = ChatController._conversation_memories[session_id]
+        
+        # Limitar el número de mensajes en la memoria si excede el límite
+        ChatController._limit_memory_messages(memory, session_id)
         
         # Hacer pregunta
         try:
@@ -135,6 +141,43 @@ class ChatController:
             del ChatController._conversation_memories[session_id]
             return True
         return False
+    
+    @staticmethod
+    def _limit_memory_messages(memory: ConversationBufferMemory, session_id: str):
+        """
+        Limita el número de mensajes en la memoria para evitar que crezca indefinidamente
+        
+        Args:
+            memory: Memoria conversacional
+            session_id: ID de sesión
+        """
+        from app.config import settings
+        try:
+            # Obtener mensajes actuales
+            if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
+                messages = memory.chat_memory.messages
+            elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
+                messages = memory.buffer.messages
+            else:
+                return  # No se puede limitar
+            
+            max_messages = settings.CHAT_MEMORY_MAX_MESSAGES * 2  # *2 porque son pares (user + assistant)
+            
+            # Si excede el límite, mantener solo los últimos N mensajes
+            if len(messages) > max_messages:
+                # Mantener solo los últimos mensajes
+                messages_to_keep = messages[-max_messages:]
+                
+                # Limpiar y restaurar
+                if hasattr(memory, 'chat_memory'):
+                    memory.chat_memory.clear()
+                    memory.chat_memory.messages = messages_to_keep
+                elif hasattr(memory, 'buffer'):
+                    memory.buffer.clear()
+                    memory.buffer.messages = messages_to_keep
+                    
+        except Exception as e:
+            print(f"⚠️ Error limitando memoria: {str(e)}")
     
     @staticmethod
     def get_conversation_history(session_id: str) -> List[Dict[str, str]]:
