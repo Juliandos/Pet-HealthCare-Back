@@ -13,6 +13,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
+from langchain.prompts import PromptTemplate
 from app.config import settings
 from app.services.s3_service import S3Service
 
@@ -235,13 +236,34 @@ class LangChainService:
             search_kwargs={"k": settings.RAG_TOP_K_RESULTS}
         )
         
-        # Crear cadena conversacional
+        # Prompt personalizado para que la IA use SOLO los documentos
+        qa_prompt = PromptTemplate(
+            template="""Eres un asistente veterinario especializado en el cuidado de mascotas. 
+Tu trabajo es responder preguntas sobre la salud y el historial médico de las mascotas basándote ÚNICAMENTE en los documentos proporcionados.
+
+IMPORTANTE:
+- Responde SOLO basándote en la información contenida en los siguientes fragmentos de documentos
+- Si la información no está en los documentos, di claramente "No encontré esa información en los documentos de la mascota"
+- Sé específico y menciona fechas, medicamentos, tratamientos, vacunaciones, etc. cuando estén disponibles en los documentos
+- Si no sabes la respuesta basándote en los documentos, di que no encontraste esa información
+
+Fragmentos de documentos relevantes:
+{context}
+
+Pregunta: {question}
+
+Respuesta basada únicamente en los documentos:""",
+            input_variables=["context", "question"]
+        )
+        
+        # Crear cadena conversacional con prompt personalizado
         chain = ConversationalRetrievalChain.from_llm(
             llm=self.llm,
             retriever=retriever,
             memory=memory,
             return_source_documents=True,
-            verbose=True
+            verbose=True,
+            combine_docs_chain_kwargs={"prompt": qa_prompt}
         )
         
         return chain
@@ -267,7 +289,14 @@ class LangChainService:
         chain = self.create_conversation_chain(vector_store, memory)
         
         # Hacer pregunta
+        print(f"❓ Procesando pregunta: {question}")
+        print(f"🔍 Buscando en {settings.RAG_TOP_K_RESULTS} documentos más relevantes...")
         result = chain.invoke({"question": question})
+        print(f"✅ Respuesta generada")
+        
+        # Obtener documentos fuente
+        source_docs = result.get("source_documents", [])
+        print(f"📄 Documentos fuente encontrados: {len(source_docs)}")
         
         return {
             "answer": result.get("answer", ""),
@@ -277,7 +306,7 @@ class LangChainService:
                     "source": doc.metadata.get("source", "unknown"),
                     "page": doc.metadata.get("page", 0)
                 }
-                for doc in result.get("source_documents", [])
+                for doc in source_docs
             ],
             "chat_history": self._extract_chat_history(memory) if memory else []
         }
@@ -338,17 +367,41 @@ class LangChainService:
         
         Args:
             db: Sesión de base de datos
-            pet_id: ID de la mascota
+            pet_id: ID de la mascota (puede ser string UUID)
             
         Returns:
             Lista de URLs de PDFs
         """
         from app.models import PetPhoto
+        import uuid
+        
+        # Convertir pet_id a UUID si es string
+        try:
+            if isinstance(pet_id, str):
+                pet_uuid = uuid.UUID(pet_id)
+            else:
+                pet_uuid = pet_id
+        except (ValueError, AttributeError) as e:
+            # Si no es un UUID válido, intentar buscar como string
+            print(f"⚠️ Error convirtiendo pet_id a UUID: {str(e)}, usando como string")
+            pet_uuid = pet_id
+        
+        print(f"🔍 Buscando documentos para mascota: {pet_id} (UUID: {pet_uuid})")
         
         documents = db.query(PetPhoto).filter(
-            PetPhoto.pet_id == pet_id,
+            PetPhoto.pet_id == pet_uuid,
             PetPhoto.file_type == "document"
         ).all()
         
-        return [doc.url for doc in documents if doc.url]
+        print(f"📋 Encontrados {len(documents)} registros en la base de datos")
+        
+        urls = [doc.url for doc in documents if doc.url]
+        print(f"📄 URLs válidas encontradas: {len(urls)}")
+        for i, url in enumerate(urls, 1):
+            print(f"   {i}. {url}")
+        
+        if not urls:
+            print(f"⚠️ No se encontraron URLs válidas para la mascota {pet_id}")
+        
+        return urls
 
