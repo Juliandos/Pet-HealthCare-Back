@@ -279,11 +279,54 @@ class LangChainService:
                 }
                 for doc in result.get("source_documents", [])
             ],
-            "chat_history": [
-                {"role": "human", "content": msg.content} if hasattr(msg, 'content') else str(msg)
-                for msg in memory.chat_history.messages if hasattr(msg, 'content')
-            ] if memory else []
+            "chat_history": self._extract_chat_history(memory) if memory else []
         }
+    
+    def _extract_chat_history(self, memory: ConversationBufferMemory) -> List[Dict[str, str]]:
+        """
+        Extrae el historial de conversación de la memoria
+        
+        Args:
+            memory: Memoria conversacional
+            
+        Returns:
+            Lista de mensajes del historial
+        """
+        history = []
+        try:
+            # Intentar acceder al historial de diferentes formas según la versión de LangChain
+            if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
+                messages = memory.chat_memory.messages
+            elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
+                messages = memory.buffer.messages
+            elif hasattr(memory, 'chat_history'):
+                messages = memory.chat_history.messages if hasattr(memory.chat_history, 'messages') else []
+            else:
+                # Intentar cargar desde variables de memoria
+                memory_vars = memory.load_memory_variables({})
+                messages = memory_vars.get('chat_history', [])
+            
+            for msg in messages:
+                if hasattr(msg, 'content'):
+                    # Determinar el rol del mensaje
+                    msg_type = type(msg).__name__
+                    if 'Human' in msg_type or 'user' in msg_type.lower():
+                        role = "user"
+                    elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
+                        role = "assistant"
+                    else:
+                        role = "user"  # Por defecto
+                    
+                    history.append({
+                        "role": role,
+                        "content": msg.content
+                    })
+        except Exception as e:
+            # Si hay error, retornar lista vacía
+            print(f"⚠️ Error extrayendo historial: {str(e)}")
+            return []
+        
+        return history
     
     def get_pet_documents_from_db(
         self,

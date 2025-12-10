@@ -153,13 +153,38 @@ class ChatController:
         memory = ChatController._conversation_memories[session_id]
         
         history = []
-        for msg in memory.chat_history.messages:
-            if hasattr(msg, 'content'):
-                role = "user" if msg.__class__.__name__ == "HumanMessage" else "assistant"
-                history.append({
-                    "role": role,
-                    "content": msg.content
-                })
+        try:
+            # Intentar acceder al historial de diferentes formas según la versión de LangChain
+            if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
+                messages = memory.chat_memory.messages
+            elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
+                messages = memory.buffer.messages
+            elif hasattr(memory, 'chat_history'):
+                messages = memory.chat_history.messages if hasattr(memory.chat_history, 'messages') else []
+            else:
+                # Intentar cargar desde variables de memoria
+                memory_vars = memory.load_memory_variables({})
+                messages = memory_vars.get('chat_history', [])
+            
+            for msg in messages:
+                if hasattr(msg, 'content'):
+                    # Determinar el rol del mensaje
+                    msg_type = type(msg).__name__
+                    if 'Human' in msg_type or 'user' in msg_type.lower():
+                        role = "user"
+                    elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
+                        role = "assistant"
+                    else:
+                        role = "user"  # Por defecto
+                    
+                    history.append({
+                        "role": role,
+                        "content": msg.content
+                    })
+        except Exception as e:
+            # Si hay error, retornar lista vacía
+            print(f"⚠️ Error extrayendo historial: {str(e)}")
+            return []
         
         return history
 
