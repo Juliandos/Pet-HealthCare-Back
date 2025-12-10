@@ -13,6 +13,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain, ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from app.config import settings
 from app.services.s3_service import S3Service
@@ -237,15 +238,14 @@ class LangChainService:
         # Si no se usan documentos, crear una cadena conversacional simple
         if not use_documents or vector_store is None:
             # Crear memoria si no se proporciona
+            # Usar return_messages=True para trabajar con mensajes directamente
             if memory is None:
-                memory = ConversationBufferMemory(
-                    return_messages=False  # ConversationChain espera string, no mensajes
-                )
+                memory = ConversationBufferMemory(return_messages=True)
             
             from langchain.chains import ConversationChain
             
             # Prompt para veterinario experto general
-            # Usar el prompt por defecto de ConversationChain pero con instrucciones de veterinario
+            # ConversationChain por defecto usa "history" y "input"
             prompt = PromptTemplate(
                 input_variables=["history", "input"],
                 template="""Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
@@ -275,12 +275,72 @@ Pregunta actual del usuario: {input}
 Respuesta del veterinario experto:"""
             )
             
-            # Usar ConversationChain con el prompt personalizado
-            chain = ConversationChain(
+            # Usar una clase wrapper simple que maneje la conversación directamente
+            # Esto evita problemas con ConversationChain y sus configuraciones
+            class SimpleConversationChain:
+                def __init__(self, llm, memory, system_prompt):
+                    self.llm = llm
+                    self.memory = memory
+                    self.system_prompt = system_prompt
+                
+                def invoke(self, inputs):
+                    # Obtener historial de la memoria
+                    memory_vars = self.memory.load_memory_variables({})
+                    history = memory_vars.get('history', memory_vars.get('chat_history', []))
+                    
+                    # Construir mensajes
+                    messages = [SystemMessage(content=self.system_prompt)]
+                    
+                    # Agregar historial
+                    if isinstance(history, list):
+                        messages.extend(history)
+                    elif isinstance(history, str) and history.strip():
+                        # Si es string, parsearlo (formato: "Human: ...\nAI: ...")
+                        for line in history.split('\n'):
+                            line = line.strip()
+                            if line.startswith('Human:'):
+                                messages.append(HumanMessage(content=line.replace('Human:', '').strip()))
+                            elif line.startswith('AI:'):
+                                messages.append(AIMessage(content=line.replace('AI:', '').strip()))
+                    
+                    # Agregar pregunta actual
+                    messages.append(HumanMessage(content=inputs.get("input", "")))
+                    
+                    # Invocar LLM
+                    response = self.llm.invoke(messages)
+                    answer = response.content if hasattr(response, 'content') else str(response)
+                    
+                    # Guardar en memoria
+                    self.memory.save_context(
+                        {"input": inputs.get("input", "")},
+                        {"output": answer}
+                    )
+                    
+                    return {"response": answer}
+            
+            system_prompt = """Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
+
+Tu conocimiento abarca:
+- Diagnóstico y tratamiento de enfermedades comunes
+- Vacunación y prevención
+- Nutrición y alimentación
+- Comportamiento animal
+- Cuidados generales de diferentes especies (perros, gatos, aves, roedores, reptiles, etc.)
+- Emergencias veterinarias
+- Medicina preventiva
+
+IMPORTANTE:
+- Responde de manera profesional, clara y empática
+- Proporciona información útil y práctica
+- Si no estás seguro de algo, recomienda consultar con un veterinario presencial
+- SIEMPRE mantén el contexto de la conversación anterior y haz referencia a preguntas y respuestas previas cuando sea relevante
+- Si el usuario pregunta sobre algo mencionado anteriormente, usa esa información
+- Sé específico y detallado en tus respuestas"""
+            
+            chain = SimpleConversationChain(
                 llm=self.llm,
                 memory=memory,
-                prompt=prompt,
-                verbose=True
+                system_prompt=system_prompt
             )
             return chain
         

@@ -86,10 +86,9 @@ class ChatController:
         
         if session_id not in ChatController._conversation_memories:
             from app.config import settings
-            # ConversationChain usa configuración por defecto
-            # return_messages=False porque ConversationChain espera string, no mensajes
+            # Usar ConversationBufferMemory con return_messages=True para trabajar con mensajes directamente
             ChatController._conversation_memories[session_id] = ConversationBufferMemory(
-                return_messages=False,  # ConversationChain espera string
+                return_messages=True,
                 max_token_limit=2000  # Limitar tokens para evitar memoria excesiva
             )
         
