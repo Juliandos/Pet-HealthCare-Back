@@ -1,42 +1,74 @@
 """
-Servicio LangChain para RAG (Retrieval Augmented Generation)
-Procesa PDFs de mascotas y permite hacer preguntas con contexto conversacional
+Servicio LangChain mejorado para chat veterinario con IA
+Incluye manejo robusto de memoria conversacional y modo sin documentos
 """
-import os
-import tempfile
-import requests
 from typing import List, Optional, Dict, Any
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import PGVector
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain, ConversationChain
+from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from app.config import settings
 from app.services.s3_service import S3Service
+import os
+import tempfile
+import requests
+
 
 class LangChainService:
-    """Servicio para procesamiento de documentos con LangChain y RAG"""
+    """Servicio para chat veterinario con IA usando LangChain"""
     
+    # Prompt optimizado para veterinario experto
+    VETERINARY_SYSTEM_PROMPT = """Eres un veterinario experto altamente calificado con más de 15 años de experiencia en medicina veterinaria. Tu especialización abarca todas las especies de animales domésticos y de compañía.
+
+**TU EXPERIENCIA INCLUYE:**
+- Diagnóstico y tratamiento de enfermedades en perros, gatos, aves, roedores, reptiles y otros animales
+- Medicina preventiva: vacunación, desparasitación, chequeos de rutina
+- Nutrición especializada para diferentes especies y condiciones de salud
+- Comportamiento animal y problemas de conducta
+- Emergencias veterinarias y primeros auxilios
+- Cirugía general y procedimientos médicos
+- Geriatría y cuidados paliativos en mascotas
+
+**CÓMO DEBES RESPONDER:**
+1. **Profesional pero empático**: Usa lenguaje claro y cercano, sin tecnicismos excesivos
+2. **Basado en evidencia**: Proporciona información respaldada por medicina veterinaria moderna
+3. **Seguridad primero**: Si detectas una emergencia, recomienda atención veterinaria inmediata
+4. **Memoria activa**: SIEMPRE mantén el contexto de la conversación. Si el usuario pregunta sobre algo mencionado antes, haz referencia explícita a esa información
+5. **Específico y práctico**: Da recomendaciones concretas y accionables
+6. **Honesto sobre limitaciones**: Si algo requiere examen físico o pruebas, indícalo claramente
+
+**IMPORTANTE:**
+- Siempre recuerda y haz referencia al historial de la conversación
+- Si el usuario pregunta "¿recuerdas lo que te pregunté?" o similar, debes poder responder específicamente
+- Mantén un tono cálido pero profesional
+- Si no estás seguro de algo, admítelo y recomienda consulta presencial
+
+**LIMITACIONES:**
+- No puedes reemplazar una consulta veterinaria presencial
+- No puedes recetar medicamentos sin examen físico
+- No puedes diagnosticar definitivamente sin pruebas
+- Siempre recomienda visita veterinaria ante síntomas graves"""
+
     def __init__(self):
         """Inicializa el servicio LangChain"""
-        # Configurar OpenAI
         if not settings.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY no está configurada en el .env")
+            raise ValueError("OPENAI_API_KEY no configurada")
         
-        # Inicializar embeddings
+        # Inicializar embeddings para RAG
         self.embeddings = OpenAIEmbeddings(
             model=settings.OPENAI_EMBEDDING_MODEL,
             openai_api_key=settings.OPENAI_API_KEY
         )
         
-        # Inicializar LLM
+        # Inicializar LLM con temperatura optimizada para veterinario
         self.llm = ChatOpenAI(
             model=settings.OPENAI_MODEL,
-            temperature=settings.OPENAI_TEMPERATURE,
+            temperature=0.3,  # Balance entre creatividad y precisión
             openai_api_key=settings.OPENAI_API_KEY
         )
         
@@ -46,10 +78,9 @@ class LangChainService:
             os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
             os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
         
-        # Servicio S3 para descargar PDFs
         self.s3_service = S3Service()
         
-        # Text splitter
+        # Text splitter para documentos
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.RAG_CHUNK_SIZE,
             chunk_overlap=settings.RAG_CHUNK_OVERLAP,
@@ -57,23 +88,13 @@ class LangChainService:
         )
     
     def _download_pdf_from_s3(self, s3_url: str) -> str:
-        """
-        Descarga un PDF desde S3 a un archivo temporal
-        
-        Args:
-            s3_url: URL del PDF en S3
-            
-        Returns:
-            Ruta al archivo temporal descargado
-        """
+        """Descarga un PDF desde S3 a archivo temporal"""
         try:
-            # Crear archivo temporal
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
             temp_path = temp_file.name
             temp_file.close()
             
-            # Descargar desde S3
-            response = requests.get(s3_url, stream=True)
+            response = requests.get(s3_url, stream=True, timeout=30)
             response.raise_for_status()
             
             with open(temp_path, 'wb') as f:
@@ -82,38 +103,26 @@ class LangChainService:
             
             return temp_path
         except Exception as e:
-            raise Exception(f"Error descargando PDF desde S3: {str(e)}")
+            raise Exception(f"Error descargando PDF: {str(e)}")
     
     def _load_pdf_documents(self, pdf_urls: List[str]) -> List[Document]:
-        """
-        Carga y procesa múltiples PDFs desde URLs de S3
-        
-        Args:
-            pdf_urls: Lista de URLs de PDFs en S3
-            
-        Returns:
-            Lista de documentos procesados
-        """
+        """Carga y procesa múltiples PDFs"""
         all_documents = []
         
         for pdf_url in pdf_urls:
             try:
-                # Descargar PDF temporalmente
                 temp_path = self._download_pdf_from_s3(pdf_url)
                 
                 try:
-                    # Cargar PDF
                     loader = PyPDFLoader(temp_path)
                     documents = loader.load()
                     
-                    # Agregar metadata sobre el origen
                     for doc in documents:
                         doc.metadata['source'] = pdf_url
                         doc.metadata['source_type'] = 'pet_document'
                     
                     all_documents.extend(documents)
                 finally:
-                    # Eliminar archivo temporal
                     if os.path.exists(temp_path):
                         os.unlink(temp_path)
                         
@@ -129,56 +138,33 @@ class LangChainService:
         pet_id: str,
         collection_name: Optional[str] = None
     ) -> PGVector:
-        """
-        Crea o actualiza un vector store para los documentos de una mascota
-        
-        Args:
-            pdf_urls: Lista de URLs de PDFs en S3
-            pet_id: ID de la mascota
-            collection_name: Nombre de la colección (opcional)
-            
-        Returns:
-            Instancia de PGVector
-        """
+        """Crea vector store para documentos de mascota"""
         if not pdf_urls:
             raise ValueError("No hay PDFs para procesar")
         
-        # Cargar documentos
-        print(f"📄 Cargando {len(pdf_urls)} PDF(s) para la mascota {pet_id}...")
-        for i, url in enumerate(pdf_urls, 1):
-            print(f"   [{i}/{len(pdf_urls)}] {url}")
+        print(f"📄 Cargando {len(pdf_urls)} PDF(s)...")
         documents = self._load_pdf_documents(pdf_urls)
         
         if not documents:
-            raise ValueError("No se pudieron cargar documentos de los PDFs")
+            raise ValueError("No se pudieron cargar documentos")
         
-        print(f"✅ Cargados {len(documents)} documentos (páginas totales)")
-        total_chars = sum(len(doc.page_content) for doc in documents)
-        print(f"   Total de caracteres: {total_chars:,}")
-        
-        # Dividir en chunks
-        print(f"✂️ Dividiendo documentos en chunks...")
+        print(f"✂️ Dividiendo en chunks...")
         chunks = self.text_splitter.split_documents(documents)
-        print(f"✅ Creados {len(chunks)} chunks")
-        if chunks:
-            avg_chunk_size = sum(len(chunk.page_content) for chunk in chunks) / len(chunks)
-            print(f"   Tamaño promedio de chunk: {avg_chunk_size:.0f} caracteres")
+        print(f"✅ {len(chunks)} chunks creados")
         
-        # Crear nombre de colección único por mascota
         if not collection_name:
             collection_name = f"pet_{pet_id}_documents"
         
-        # Obtener connection string de PostgreSQL
         connection_string = settings.DATABASE_URL
-        
-        # Convertir postgresql+psycopg2:// a postgresql+psycopg:// para pgvector
         if connection_string.startswith("postgresql+psycopg2://"):
-            connection_string = connection_string.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+            connection_string = connection_string.replace(
+                "postgresql+psycopg2://", "postgresql+psycopg://", 1
+            )
         elif connection_string.startswith("postgresql://"):
-            connection_string = connection_string.replace("postgresql://", "postgresql+psycopg://", 1)
+            connection_string = connection_string.replace(
+                "postgresql://", "postgresql+psycopg://", 1
+            )
         
-        # Crear o actualizar vector store
-        # Nota: PGVector.from_documents crea la colección si no existe, o la actualiza si existe
         print(f"💾 Almacenando embeddings en PostgreSQL...")
         try:
             vector_store = PGVector.from_documents(
@@ -186,20 +172,17 @@ class LangChainService:
                 embedding=self.embeddings,
                 collection_name=collection_name,
                 connection_string=connection_string,
-                pre_delete_collection=False,  # No eliminar, solo agregar/actualizar
+                pre_delete_collection=False,
             )
-            print(f"✅ Embeddings almacenados correctamente")
+            print(f"✅ Embeddings almacenados")
         except Exception as e:
-            # Si falla, intentar eliminar y recrear
-            print(f"⚠️ Error al actualizar colección, recreando...")
+            print(f"⚠️ Recreando colección...")
             try:
-                # Eliminar colección existente
                 temp_store = PGVector(
                     collection_name=collection_name,
                     connection_string=connection_string,
                     embedding_function=self.embeddings,
                 )
-                # Intentar eliminar (puede fallar si no existe, está bien)
                 try:
                     temp_store.delete_collection()
                 except:
@@ -207,181 +190,15 @@ class LangChainService:
             except:
                 pass
             
-            # Crear nueva colección
             vector_store = PGVector.from_documents(
                 documents=chunks,
                 embedding=self.embeddings,
                 collection_name=collection_name,
                 connection_string=connection_string,
             )
-            print(f"✅ Colección creada correctamente")
+            print(f"✅ Colección creada")
         
         return vector_store
-    
-    def create_conversation_chain(
-        self,
-        vector_store: Optional[PGVector] = None,
-        memory: Optional[ConversationBufferMemory] = None,
-        use_documents: bool = True
-    ):
-        """
-        Crea una cadena conversacional con o sin RAG
-        
-        Args:
-            vector_store: Vector store con los documentos (opcional si use_documents=False)
-            memory: Memoria conversacional (opcional)
-            use_documents: Si True, usa RAG con documentos. Si False, solo conversación general.
-            
-        Returns:
-            Cadena conversacional configurada
-        """
-        # Si no se usan documentos, crear una cadena conversacional simple
-        if not use_documents or vector_store is None:
-            # Crear memoria si no se proporciona
-            # Usar return_messages=True para trabajar con mensajes directamente
-            if memory is None:
-                memory = ConversationBufferMemory(return_messages=True)
-            
-            from langchain.chains import ConversationChain
-            
-            # Prompt para veterinario experto general
-            # ConversationChain por defecto usa "history" y "input"
-            prompt = PromptTemplate(
-                input_variables=["history", "input"],
-                template="""Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
-
-Tu conocimiento abarca:
-- Diagnóstico y tratamiento de enfermedades comunes
-- Vacunación y prevención
-- Nutrición y alimentación
-- Comportamiento animal
-- Cuidados generales de diferentes especies (perros, gatos, aves, roedores, reptiles, etc.)
-- Emergencias veterinarias
-- Medicina preventiva
-
-IMPORTANTE:
-- Responde de manera profesional, clara y empática
-- Proporciona información útil y práctica
-- Si no estás seguro de algo, recomienda consultar con un veterinario presencial
-- SIEMPRE mantén el contexto de la conversación anterior y haz referencia a preguntas y respuestas previas cuando sea relevante
-- Si el usuario pregunta sobre algo mencionado anteriormente, usa esa información
-- Sé específico y detallado en tus respuestas
-
-Historial de conversación anterior:
-{history}
-
-Pregunta actual del usuario: {input}
-
-Respuesta del veterinario experto:"""
-            )
-            
-            # Usar una clase wrapper simple que maneje la conversación directamente
-            # Esto evita problemas con ConversationChain y sus configuraciones
-            class SimpleConversationChain:
-                def __init__(self, llm, memory, system_prompt):
-                    self.llm = llm
-                    self.memory = memory
-                    self.system_prompt = system_prompt
-                
-                def invoke(self, inputs):
-                    # Obtener historial de la memoria
-                    memory_vars = self.memory.load_memory_variables({})
-                    history = memory_vars.get('history', memory_vars.get('chat_history', []))
-                    
-                    # Construir mensajes
-                    messages = [SystemMessage(content=self.system_prompt)]
-                    
-                    # Agregar historial
-                    if isinstance(history, list):
-                        messages.extend(history)
-                    elif isinstance(history, str) and history.strip():
-                        # Si es string, parsearlo (formato: "Human: ...\nAI: ...")
-                        for line in history.split('\n'):
-                            line = line.strip()
-                            if line.startswith('Human:'):
-                                messages.append(HumanMessage(content=line.replace('Human:', '').strip()))
-                            elif line.startswith('AI:'):
-                                messages.append(AIMessage(content=line.replace('AI:', '').strip()))
-                    
-                    # Agregar pregunta actual
-                    messages.append(HumanMessage(content=inputs.get("input", "")))
-                    
-                    # Invocar LLM
-                    response = self.llm.invoke(messages)
-                    answer = response.content if hasattr(response, 'content') else str(response)
-                    
-                    # Guardar en memoria
-                    self.memory.save_context(
-                        {"input": inputs.get("input", "")},
-                        {"output": answer}
-                    )
-                    
-                    return {"response": answer}
-            
-            system_prompt = """Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
-
-Tu conocimiento abarca:
-- Diagnóstico y tratamiento de enfermedades comunes
-- Vacunación y prevención
-- Nutrición y alimentación
-- Comportamiento animal
-- Cuidados generales de diferentes especies (perros, gatos, aves, roedores, reptiles, etc.)
-- Emergencias veterinarias
-- Medicina preventiva
-
-IMPORTANTE:
-- Responde de manera profesional, clara y empática
-- Proporciona información útil y práctica
-- Si no estás seguro de algo, recomienda consultar con un veterinario presencial
-- SIEMPRE mantén el contexto de la conversación anterior y haz referencia a preguntas y respuestas previas cuando sea relevante
-- Si el usuario pregunta sobre algo mencionado anteriormente, usa esa información
-- Sé específico y detallado en tus respuestas"""
-            
-            chain = SimpleConversationChain(
-                llm=self.llm,
-                memory=memory,
-                system_prompt=system_prompt
-            )
-            return chain
-        
-        # Crear retriever para RAG
-        retriever = vector_store.as_retriever(
-            search_kwargs={"k": settings.RAG_TOP_K_RESULTS}
-        )
-        
-        # Prompt personalizado que combina documentos con conocimiento general
-        qa_prompt = PromptTemplate(
-            template="""Eres un veterinario experto especializado en el cuidado de mascotas. 
-Tu trabajo es responder preguntas sobre la salud y el historial médico de las mascotas.
-
-INSTRUCCIONES:
-- Si hay información relevante en los documentos proporcionados, úsala como base principal
-- Si los documentos no contienen la información necesaria, usa tu conocimiento veterinario general para responder
-- Sé específico y menciona fechas, medicamentos, tratamientos, vacunaciones, etc. cuando estén disponibles en los documentos
-- Mantén el contexto de la conversación anterior
-- Responde de manera profesional, clara y empática
-
-Fragmentos de documentos relevantes (si están disponibles):
-{context}
-
-Pregunta: {question}
-
-Respuesta:""",
-            input_variables=["context", "question"]
-        )
-        
-        # Crear cadena conversacional con prompt personalizado
-        # ConversationalRetrievalChain maneja automáticamente la memoria
-        chain = ConversationalRetrievalChain.from_llm(
-            llm=self.llm,
-            retriever=retriever,
-            memory=memory,
-            return_source_documents=True,
-            verbose=True,
-            combine_docs_chain_kwargs={"prompt": qa_prompt}
-        )
-        
-        return chain
     
     def ask_question(
         self,
@@ -391,283 +208,212 @@ Respuesta:""",
         use_documents: bool = True
     ) -> Dict[str, Any]:
         """
-        Hace una pregunta usando RAG (si hay documentos) o conversación general
+        Hace una pregunta al veterinario experto con memoria conversacional
         
         Args:
             question: Pregunta del usuario
-            vector_store: Vector store con los documentos (opcional)
-            memory: Memoria conversacional (opcional)
-            use_documents: Si True, usa RAG. Si False, solo conversación general.
+            vector_store: Vector store con documentos (opcional)
+            memory: Memoria conversacional
+            use_documents: Si usar RAG o modo conversación general
             
         Returns:
-            Dict con la respuesta y documentos fuente
+            Dict con respuesta, historial y documentos fuente
         """
-        # Si no se usan documentos, crear cadena conversacional simple
-        if not use_documents or vector_store is None:
-            print(f"💬 Modo conversación general (sin documentos)")
-            chain = self.create_conversation_chain(
-                vector_store=None,
-                memory=memory,
-                use_documents=False
-            )
-        else:
-            # Verificar que hay documentos en el vector store antes de hacer la pregunta
-            print(f"🔍 Verificando vector store...")
-            try:
-                # Hacer una búsqueda de prueba para verificar que hay documentos
-                test_docs = vector_store.similarity_search("test", k=1)
-                print(f"✅ Vector store tiene documentos: {len(test_docs)} documentos encontrados en búsqueda de prueba")
-            except Exception as e:
-                print(f"⚠️ Error verificando vector store (continuando de todas formas): {str(e)}")
-            
-            # Crear cadena conversacional con RAG
-            chain = self.create_conversation_chain(
-                vector_store=vector_store,
-                memory=memory,
-                use_documents=True
+        print(f"❓ Procesando: {question[:100]}...")
+        
+        # Crear memoria si no existe
+        if memory is None:
+            memory = ConversationBufferMemory(
+                return_messages=True,
+                memory_key="chat_history",
+                output_key="answer"
             )
         
-        # Hacer pregunta
-        print(f"❓ Procesando pregunta: {question}")
-        if use_documents and vector_store is not None:
-            print(f"🔍 Buscando en {settings.RAG_TOP_K_RESULTS} documentos más relevantes...")
-        
-        # Verificar historial antes de la pregunta
-        if memory:
-            history_before = self._extract_chat_history(memory)
-            print(f"📚 Historial antes de la pregunta: {len(history_before)} mensajes")
-            if history_before:
-                print(f"📝 Último mensaje del historial: {history_before[-1]}")
-        
-        # Invocar la cadena (diferente formato según el tipo de cadena)
         try:
-            if not use_documents or vector_store is None:
-                # ConversationChain usa "input" y devuelve "response"
-                result = chain.invoke({"input": question})
-                answer = result.get("response", result.get("answer", ""))
-                source_docs = []
+            # Modo con documentos (RAG)
+            if use_documents and vector_store is not None:
+                answer, source_docs = self._ask_with_rag(
+                    question, vector_store, memory
+                )
+            # Modo sin documentos (conversación general)
             else:
-                # ConversationalRetrievalChain usa "question"
-                result = chain.invoke({"question": question})
-                answer = result.get("answer", "")
-                source_docs = result.get("source_documents", [])
+                answer, source_docs = self._ask_without_documents(
+                    question, memory
+                )
             
-            print(f"✅ Respuesta generada: {answer[:100] if answer else 'Sin respuesta'}...")
+            # Extraer historial actualizado
+            chat_history = self._extract_chat_history(memory)
+            
+            # Formatear documentos fuente
+            formatted_docs = self._format_source_documents(source_docs)
+            
+            return {
+                "answer": answer,
+                "source_documents": formatted_docs,
+                "chat_history": chat_history,
+                "has_documents": use_documents and vector_store is not None,
+                "error": None
+            }
+            
         except Exception as e:
-            print(f"❌ Error invocando la cadena: {str(e)}")
+            print(f"❌ Error: {str(e)}")
             import traceback
             traceback.print_exc()
-            raise  # Re-lanzar para que el controlador lo maneje
+            
+            return {
+                "answer": f"Lo siento, ocurrió un error al procesar tu pregunta. Por favor, inténtalo nuevamente.",
+                "source_documents": [],
+                "chat_history": self._extract_chat_history(memory) if memory else [],
+                "has_documents": False,
+                "error": str(e)
+            }
+    
+    def _ask_with_rag(
+        self,
+        question: str,
+        vector_store: PGVector,
+        memory: ConversationBufferMemory
+    ) -> tuple[str, List]:
+        """Pregunta usando RAG (con documentos)"""
+        print("📚 Modo RAG activado")
         
-        # Obtener documentos fuente (solo si se usaron documentos)
-        if use_documents and vector_store is not None:
-            print(f"📄 Documentos fuente encontrados: {len(source_docs)}")
-        else:
-            source_docs = []
+        retriever = vector_store.as_retriever(
+            search_kwargs={"k": settings.RAG_TOP_K_RESULTS}
+        )
         
-        # Verificar historial después de la pregunta
-        if memory:
-            history_after = self._extract_chat_history(memory)
-            print(f"📚 Historial después de la pregunta: {len(history_after)} mensajes")
-            if history_after:
-                print(f"📝 Últimos 2 mensajes del historial:")
-                for msg in history_after[-2:]:
-                    print(f"   - {msg['role']}: {msg['content'][:50]}...")
-            else:
-                print(f"⚠️ ADVERTENCIA: El historial está vacío después de la pregunta")
-                # Intentar debug: ver qué tiene la memoria
-                try:
-                    if hasattr(memory, 'chat_memory'):
-                        print(f"   Debug - chat_memory.messages: {len(memory.chat_memory.messages) if hasattr(memory.chat_memory, 'messages') else 'N/A'}")
-                    memory_vars = memory.load_memory_variables({})
-                    print(f"   Debug - memory_vars keys: {list(memory_vars.keys())}")
-                    print(f"   Debug - chat_history type: {type(memory_vars.get('chat_history', None))}")
-                except Exception as e:
-                    print(f"   Debug error: {str(e)}")
+        # Prompt que combina documentos con conocimiento veterinario
+        qa_prompt = PromptTemplate(
+            template=f"""{self.VETERINARY_SYSTEM_PROMPT}
+
+**DOCUMENTOS DE LA MASCOTA:**
+{{context}}
+
+**HISTORIAL DE CONVERSACIÓN:**
+Recuerda todo lo que hemos hablado anteriormente y haz referencia a ello cuando sea relevante.
+
+**PREGUNTA ACTUAL:**
+{{question}}
+
+**TU RESPUESTA COMO VETERINARIO EXPERTO:**""",
+            input_variables=["context", "question"]
+        )
         
-        # Asegurar que answer no sea None (ya se obtuvo arriba en el bloque try)
-        if not answer:
-            answer = "No se pudo generar una respuesta."
+        # Crear cadena conversacional
+        chain = ConversationalRetrievalChain.from_llm(
+            llm=self.llm,
+            retriever=retriever,
+            memory=memory,
+            return_source_documents=True,
+            verbose=False,
+            combine_docs_chain_kwargs={"prompt": qa_prompt}
+        )
         
-        # Formatear documentos fuente
-        formatted_source_docs = []
-        for doc in source_docs:
-            try:
-                content = doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
-                formatted_source_docs.append({
-                    "content": content,
-                    "source": doc.metadata.get("source", "unknown"),
-                    "page": doc.metadata.get("page", 0)
-                })
-            except Exception as e:
-                print(f"⚠️ Error formateando documento fuente: {str(e)}")
-                continue
+        result = chain.invoke({"question": question})
+        answer = result.get("answer", "")
+        source_docs = result.get("source_documents", [])
         
-        # Extraer historial de conversación
-        chat_history = []
-        if memory:
-            try:
-                chat_history = self._extract_chat_history(memory)
-            except Exception as e:
-                print(f"⚠️ Error extrayendo historial: {str(e)}")
-                chat_history = []
+        return answer, source_docs
+    
+    def _ask_without_documents(
+        self,
+        question: str,
+        memory: ConversationBufferMemory
+    ) -> tuple[str, List]:
+        """Pregunta sin documentos (conversación general)"""
+        print("💬 Modo conversación general")
         
-        return {
-            "answer": answer,
-            "source_documents": formatted_source_docs,
-            "chat_history": chat_history
-        }
+        # Cargar historial de memoria
+        memory_vars = memory.load_memory_variables({})
+        history = memory_vars.get('chat_history', [])
+        
+        # Construir mensajes para el LLM
+        messages = [
+            SystemMessage(content=self.VETERINARY_SYSTEM_PROMPT)
+        ]
+        
+        # Agregar historial
+        if isinstance(history, list):
+            messages.extend(history)
+        
+        # Agregar pregunta actual
+        messages.append(HumanMessage(content=question))
+        
+        # Invocar LLM
+        response = self.llm.invoke(messages)
+        answer = response.content if hasattr(response, 'content') else str(response)
+        
+        # Guardar en memoria
+        memory.save_context(
+            {"question": question},
+            {"answer": answer}
+        )
+        
+        return answer, []
     
     def _extract_chat_history(self, memory: ConversationBufferMemory) -> List[Dict[str, str]]:
-        """
-        Extrae el historial de conversación de la memoria
-        
-        Args:
-            memory: Memoria conversacional
-            
-        Returns:
-            Lista de mensajes del historial
-        """
+        """Extrae historial de conversación de forma robusta"""
         history = []
+        
         try:
-            # Método más confiable: usar load_memory_variables primero
             memory_vars = memory.load_memory_variables({})
+            chat_history = memory_vars.get('chat_history', [])
             
-            # ConversationChain usa "history" como key, ConversationalRetrievalChain usa "chat_history"
-            chat_history = memory_vars.get('history', memory_vars.get('chat_history', ''))
-            
-            # Si chat_history es un string (formato de ConversationChain)
-            if isinstance(chat_history, str) and chat_history.strip():
-                # Parsear el string del historial (formato: "Human: ...\nAI: ...")
-                lines = chat_history.split('\n')
-                current_role = None
-                current_content = []
-                
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if line.startswith('Human:'):
-                        # Guardar mensaje anterior si existe
-                        if current_role and current_content:
-                            history.append({
-                                "role": current_role,
-                                "content": ' '.join(current_content).strip()
-                            })
-                        current_role = "user"
-                        current_content = [line.replace('Human:', '').strip()]
-                    elif line.startswith('AI:') or line.startswith('Assistant:'):
-                        # Guardar mensaje anterior si existe
-                        if current_role and current_content:
-                            history.append({
-                                "role": current_role,
-                                "content": ' '.join(current_content).strip()
-                            })
-                        current_role = "assistant"
-                        current_content = [line.replace('AI:', '').replace('Assistant:', '').strip()]
-                    else:
-                        # Continuación del mensaje anterior
-                        if current_content:
-                            current_content.append(line)
-                
-                # Guardar último mensaje
-                if current_role and current_content:
-                    history.append({
-                        "role": current_role,
-                        "content": ' '.join(current_content).strip()
-                    })
-            
-            # Si chat_history es una lista de mensajes (formato de ConversationalRetrievalChain)
-            elif isinstance(chat_history, list) and len(chat_history) > 0:
+            if isinstance(chat_history, list):
                 for msg in chat_history:
-                    if hasattr(msg, 'content'):
-                        # Determinar el rol del mensaje
-                        msg_type = type(msg).__name__
-                        if 'Human' in msg_type or 'user' in msg_type.lower() or 'HumanMessage' in msg_type:
+                    if isinstance(msg, BaseMessage):
+                        # Determinar rol
+                        if isinstance(msg, HumanMessage):
                             role = "user"
-                        elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
+                        elif isinstance(msg, AIMessage):
                             role = "assistant"
                         else:
-                            role = "user"  # Por defecto
+                            role = "user"
                         
                         history.append({
                             "role": role,
                             "content": msg.content
                         })
-            
-            # Si no hay nada en load_memory_variables, intentar acceder directamente
-            if not history:
-                if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
-                    messages = memory.chat_memory.messages
-                    for msg in messages:
-                        if hasattr(msg, 'content'):
-                            msg_type = type(msg).__name__
-                            if 'Human' in msg_type or 'user' in msg_type.lower() or 'HumanMessage' in msg_type:
-                                role = "user"
-                            elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
-                                role = "assistant"
-                            else:
-                                role = "user"
-                            history.append({
-                                "role": role,
-                                "content": msg.content
-                            })
-                            
         except Exception as e:
-            # Si hay error, retornar lista vacía
             print(f"⚠️ Error extrayendo historial: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return []
         
         return history
     
-    def get_pet_documents_from_db(
-        self,
-        db,
-        pet_id: str
-    ) -> List[str]:
-        """
-        Obtiene las URLs de los documentos PDF de una mascota desde la base de datos
+    def _format_source_documents(self, source_docs: List) -> List[Dict[str, Any]]:
+        """Formatea documentos fuente para la respuesta"""
+        formatted = []
         
-        Args:
-            db: Sesión de base de datos
-            pet_id: ID de la mascota (puede ser string UUID)
-            
-        Returns:
-            Lista de URLs de PDFs
-        """
+        for doc in source_docs:
+            try:
+                content = doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+                formatted.append({
+                    "content": content,
+                    "source": doc.metadata.get("source", "unknown"),
+                    "page": doc.metadata.get("page", 0)
+                })
+            except Exception as e:
+                print(f"⚠️ Error formateando documento: {str(e)}")
+                continue
+        
+        return formatted
+    
+    def get_pet_documents_from_db(self, db, pet_id: str) -> List[str]:
+        """Obtiene URLs de documentos PDF de mascota desde DB"""
         from app.models import PetPhoto
         import uuid
         
-        # Convertir pet_id a UUID si es string
         try:
-            if isinstance(pet_id, str):
-                pet_uuid = uuid.UUID(pet_id)
-            else:
-                pet_uuid = pet_id
-        except (ValueError, AttributeError) as e:
-            # Si no es un UUID válido, intentar buscar como string
-            print(f"⚠️ Error convirtiendo pet_id a UUID: {str(e)}, usando como string")
+            pet_uuid = uuid.UUID(pet_id) if isinstance(pet_id, str) else pet_id
+        except (ValueError, AttributeError):
             pet_uuid = pet_id
         
-        print(f"🔍 Buscando documentos para mascota: {pet_id} (UUID: {pet_uuid})")
+        print(f"🔍 Buscando documentos para mascota: {pet_id}")
         
         documents = db.query(PetPhoto).filter(
             PetPhoto.pet_id == pet_uuid,
             PetPhoto.file_type == "document"
         ).all()
         
-        print(f"📋 Encontrados {len(documents)} registros en la base de datos")
-        
         urls = [doc.url for doc in documents if doc.url]
-        print(f"📄 URLs válidas encontradas: {len(urls)}")
-        for i, url in enumerate(urls, 1):
-            print(f"   {i}. {url}")
-        
-        if not urls:
-            print(f"⚠️ No se encontraron URLs válidas para la mascota {pet_id}")
+        print(f"📄 {len(urls)} documentos encontrados")
         
         return urls
-
