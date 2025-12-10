@@ -100,7 +100,11 @@ class ChatController:
         memory = ChatController._conversation_memories[session_id]
         
         # Limitar el número de mensajes en la memoria si excede el límite
-        ChatController._limit_memory_messages(memory, session_id)
+        # Solo hacerlo si la memoria ya tiene mensajes
+        try:
+            ChatController._limit_memory_messages(memory, session_id)
+        except Exception as e:
+            print(f"⚠️ Error limitando memoria (continuando de todas formas): {str(e)}")
         
         # Hacer pregunta
         try:
@@ -110,12 +114,25 @@ class ChatController:
                 memory=memory
             )
             
+            # Asegurar que todos los campos estén presentes y en el formato correcto
+            answer = result.get("answer", "No se pudo generar una respuesta.")
+            source_documents = result.get("source_documents", [])
+            chat_history = result.get("chat_history", [])
+            
+            # Convertir chat_history a formato correcto si es necesario
+            if chat_history and isinstance(chat_history[0], dict):
+                # Ya está en formato correcto
+                pass
+            else:
+                chat_history = []
+            
             return {
-                "answer": result["answer"],
-                "source_documents": result["source_documents"],
-                "chat_history": result["chat_history"],
+                "answer": answer,
+                "source_documents": source_documents,
+                "chat_history": chat_history,
                 "has_documents": True,
-                "session_id": session_id
+                "session_id": session_id,
+                "error": result.get("error")
             }
         except Exception as e:
             return {
@@ -154,12 +171,15 @@ class ChatController:
         from app.config import settings
         try:
             # Obtener mensajes actuales
+            messages = []
             if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
-                messages = memory.chat_memory.messages
+                messages = list(memory.chat_memory.messages)  # Convertir a lista para evitar problemas
             elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
-                messages = memory.buffer.messages
-            else:
-                return  # No se puede limitar
+                messages = list(memory.buffer.messages)  # Convertir a lista para evitar problemas
+            
+            # Si no hay mensajes, no hay nada que limitar
+            if not messages:
+                return
             
             max_messages = settings.CHAT_MEMORY_MAX_MESSAGES * 2  # *2 porque son pares (user + assistant)
             
@@ -169,15 +189,22 @@ class ChatController:
                 messages_to_keep = messages[-max_messages:]
                 
                 # Limpiar y restaurar
-                if hasattr(memory, 'chat_memory'):
+                if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'clear'):
                     memory.chat_memory.clear()
-                    memory.chat_memory.messages = messages_to_keep
-                elif hasattr(memory, 'buffer'):
+                    # Restaurar mensajes uno por uno para evitar problemas de tipo
+                    for msg in messages_to_keep:
+                        memory.chat_memory.add_message(msg)
+                elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'clear'):
                     memory.buffer.clear()
-                    memory.buffer.messages = messages_to_keep
+                    # Restaurar mensajes uno por uno para evitar problemas de tipo
+                    for msg in messages_to_keep:
+                        memory.buffer.add_message(msg)
                     
         except Exception as e:
             print(f"⚠️ Error limitando memoria: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # No lanzar la excepción, solo loguear
     
     @staticmethod
     def get_conversation_history(session_id: str) -> List[Dict[str, str]]:

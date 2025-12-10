@@ -74,6 +74,10 @@ async def ask_question_about_pet(
             detail=str(e)
         )
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Error en endpoint de chat: {str(e)}")
+        print(f"Traceback: {error_trace}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error procesando pregunta: {str(e)}"

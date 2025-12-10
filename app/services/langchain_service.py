@@ -305,7 +305,8 @@ Respuesta basada únicamente en los documentos:""",
             test_docs = vector_store.similarity_search("test", k=1)
             print(f"✅ Vector store tiene documentos: {len(test_docs)} documentos encontrados en búsqueda de prueba")
         except Exception as e:
-            print(f"⚠️ Error verificando vector store: {str(e)}")
+            print(f"⚠️ Error verificando vector store (continuando de todas formas): {str(e)}")
+            # No lanzar la excepción, solo loguear - puede que el vector store esté vacío pero aún así podemos intentar
         
         # Crear cadena conversacional
         chain = self.create_conversation_chain(vector_store, memory)
@@ -322,8 +323,14 @@ Respuesta basada únicamente en los documentos:""",
                 print(f"📝 Último mensaje del historial: {history_before[-1]}")
         
         # ConversationalRetrievalChain debería actualizar la memoria automáticamente
-        result = chain.invoke({"question": question})
-        print(f"✅ Respuesta generada: {result.get('answer', '')[:100]}...")
+        try:
+            result = chain.invoke({"question": question})
+            print(f"✅ Respuesta generada: {result.get('answer', '')[:100] if result.get('answer') else 'Sin respuesta'}...")
+        except Exception as e:
+            print(f"❌ Error invocando la cadena: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise  # Re-lanzar para que el controlador lo maneje
         
         # Obtener documentos fuente
         source_docs = result.get("source_documents", [])
@@ -349,17 +356,38 @@ Respuesta basada únicamente en los documentos:""",
                 except Exception as e:
                     print(f"   Debug error: {str(e)}")
         
-        return {
-            "answer": result.get("answer", ""),
-            "source_documents": [
-                {
-                    "content": doc.page_content[:200] + "...",
+        # Asegurar que answer no sea None
+        answer = result.get("answer", "")
+        if not answer:
+            answer = "No se pudo generar una respuesta."
+        
+        # Formatear documentos fuente
+        formatted_source_docs = []
+        for doc in source_docs:
+            try:
+                content = doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+                formatted_source_docs.append({
+                    "content": content,
                     "source": doc.metadata.get("source", "unknown"),
                     "page": doc.metadata.get("page", 0)
-                }
-                for doc in source_docs
-            ],
-            "chat_history": self._extract_chat_history(memory) if memory else []
+                })
+            except Exception as e:
+                print(f"⚠️ Error formateando documento fuente: {str(e)}")
+                continue
+        
+        # Extraer historial de conversación
+        chat_history = []
+        if memory:
+            try:
+                chat_history = self._extract_chat_history(memory)
+            except Exception as e:
+                print(f"⚠️ Error extrayendo historial: {str(e)}")
+                chat_history = []
+        
+        return {
+            "answer": answer,
+            "source_documents": formatted_source_docs,
+            "chat_history": chat_history
         }
     
     def _extract_chat_history(self, memory: ConversationBufferMemory) -> List[Dict[str, str]]:
