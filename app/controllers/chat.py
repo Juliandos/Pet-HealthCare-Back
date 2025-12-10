@@ -58,31 +58,27 @@ class ChatController:
         # Inicializar servicio LangChain
         langchain_service = LangChainService()
         
-        # Obtener URLs de documentos de la mascota
+        # Obtener URLs de documentos de la mascota (opcional)
         pdf_urls = langchain_service.get_pet_documents_from_db(db, pet_id)
+        has_documents = len(pdf_urls) > 0
         
-        if not pdf_urls:
-            return {
-                "answer": "No hay documentos disponibles para esta mascota. Por favor, sube algunos documentos PDF primero.",
-                "source_documents": [],
-                "chat_history": [],
-                "has_documents": False
-            }
+        # Crear vector store solo si hay documentos
+        vector_store = None
+        use_documents = False
         
-        # Crear o obtener vector store
-        try:
-            vector_store = langchain_service.create_vector_store(
-                pdf_urls=pdf_urls,
-                pet_id=pet_id
-            )
-        except Exception as e:
-            return {
-                "answer": f"Error procesando documentos: {str(e)}",
-                "source_documents": [],
-                "chat_history": [],
-                "has_documents": True,
-                "error": str(e)
-            }
+        if pdf_urls:
+            try:
+                vector_store = langchain_service.create_vector_store(
+                    pdf_urls=pdf_urls,
+                    pet_id=pet_id
+                )
+                use_documents = True
+                print(f"✅ Usando modo RAG con {len(pdf_urls)} documentos")
+            except Exception as e:
+                print(f"⚠️ Error procesando documentos, usando modo conversación general: {str(e)}")
+                use_documents = False
+        else:
+            print(f"💬 No hay documentos, usando modo conversación general (veterinario experto)")
         
         # Obtener o crear memoria de conversación
         if not session_id:
@@ -111,7 +107,8 @@ class ChatController:
             result = langchain_service.ask_question(
                 question=question,
                 vector_store=vector_store,
-                memory=memory
+                memory=memory,
+                use_documents=use_documents
             )
             
             # Asegurar que todos los campos estén presentes y en el formato correcto
@@ -130,7 +127,7 @@ class ChatController:
                 "answer": answer,
                 "source_documents": source_documents,
                 "chat_history": chat_history,
-                "has_documents": True,
+                "has_documents": has_documents,
                 "session_id": session_id,
                 "error": result.get("error")
             }

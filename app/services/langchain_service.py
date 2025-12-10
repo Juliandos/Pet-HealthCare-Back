@@ -10,10 +10,10 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import PGVector
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain
+from langchain.chains import ConversationalRetrievalChain, ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
-from langchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from app.config import settings
 from app.services.s3_service import S3Service
 
@@ -219,15 +219,17 @@ class LangChainService:
     
     def create_conversation_chain(
         self,
-        vector_store: PGVector,
-        memory: Optional[ConversationBufferMemory] = None
-    ) -> ConversationalRetrievalChain:
+        vector_store: Optional[PGVector] = None,
+        memory: Optional[ConversationBufferMemory] = None,
+        use_documents: bool = True
+    ):
         """
-        Crea una cadena conversacional con RAG
+        Crea una cadena conversacional con o sin RAG
         
         Args:
-            vector_store: Vector store con los documentos
+            vector_store: Vector store con los documentos (opcional si use_documents=False)
             memory: Memoria conversacional (opcional)
+            use_documents: Si True, usa RAG con documentos. Si False, solo conversación general.
             
         Returns:
             Cadena conversacional configurada
@@ -240,31 +242,65 @@ class LangChainService:
                 output_key="answer"
             )
         
-        # Crear retriever
+        # Si no se usan documentos, crear una cadena conversacional simple
+        if not use_documents or vector_store is None:
+            from langchain.chains import ConversationChain
+            from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+            
+            # Prompt para veterinario experto general
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
+
+Tu conocimiento abarca:
+- Diagnóstico y tratamiento de enfermedades comunes
+- Vacunación y prevención
+- Nutrición y alimentación
+- Comportamiento animal
+- Cuidados generales de diferentes especies (perros, gatos, aves, roedores, reptiles, etc.)
+- Emergencias veterinarias
+- Medicina preventiva
+
+IMPORTANTE:
+- Responde de manera profesional, clara y empática
+- Proporciona información útil y práctica
+- Si no estás seguro de algo, recomienda consultar con un veterinario presencial
+- Mantén el contexto de la conversación anterior
+- Sé específico y detallado en tus respuestas"""),
+                MessagesPlaceholder(variable_name="chat_history"),
+                ("human", "{input}")
+            ])
+            
+            chain = ConversationChain(
+                llm=self.llm,
+                memory=memory,
+                prompt=prompt,
+                verbose=True
+            )
+            return chain
+        
+        # Crear retriever para RAG
         retriever = vector_store.as_retriever(
             search_kwargs={"k": settings.RAG_TOP_K_RESULTS}
         )
         
-        # Prompt personalizado que incluye historial de conversación
-        # Este prompt se usa para combinar documentos, pero ConversationalRetrievalChain
-        # maneja el historial automáticamente a través de la memoria
+        # Prompt personalizado que combina documentos con conocimiento general
         qa_prompt = PromptTemplate(
-            template="""Eres un asistente veterinario especializado en el cuidado de mascotas. 
-Tu trabajo es responder preguntas sobre la salud y el historial médico de las mascotas basándote ÚNICAMENTE en los documentos proporcionados.
+            template="""Eres un veterinario experto especializado en el cuidado de mascotas. 
+Tu trabajo es responder preguntas sobre la salud y el historial médico de las mascotas.
 
-IMPORTANTE:
-- Responde SOLO basándote en la información contenida en los siguientes fragmentos de documentos
-- Si la información no está en los documentos, di claramente "No encontré esa información en los documentos de la mascota"
+INSTRUCCIONES:
+- Si hay información relevante en los documentos proporcionados, úsala como base principal
+- Si los documentos no contienen la información necesaria, usa tu conocimiento veterinario general para responder
 - Sé específico y menciona fechas, medicamentos, tratamientos, vacunaciones, etc. cuando estén disponibles en los documentos
-- Si no sabes la respuesta basándote en los documentos, di que no encontraste esa información
-- Puedes hacer referencia a preguntas y respuestas anteriores de esta conversación si es relevante
+- Mantén el contexto de la conversación anterior
+- Responde de manera profesional, clara y empática
 
-Fragmentos de documentos relevantes:
+Fragmentos de documentos relevantes (si están disponibles):
 {context}
 
 Pregunta: {question}
 
-Respuesta basada únicamente en los documentos:""",
+Respuesta:""",
             input_variables=["context", "question"]
         )
         
@@ -284,36 +320,51 @@ Respuesta basada únicamente en los documentos:""",
     def ask_question(
         self,
         question: str,
-        vector_store: PGVector,
-        memory: Optional[ConversationBufferMemory] = None
+        vector_store: Optional[PGVector] = None,
+        memory: Optional[ConversationBufferMemory] = None,
+        use_documents: bool = True
     ) -> Dict[str, Any]:
         """
-        Hace una pregunta sobre los documentos usando RAG
+        Hace una pregunta usando RAG (si hay documentos) o conversación general
         
         Args:
             question: Pregunta del usuario
-            vector_store: Vector store con los documentos
+            vector_store: Vector store con los documentos (opcional)
             memory: Memoria conversacional (opcional)
+            use_documents: Si True, usa RAG. Si False, solo conversación general.
             
         Returns:
             Dict con la respuesta y documentos fuente
         """
-        # Verificar que hay documentos en el vector store antes de hacer la pregunta
-        print(f"🔍 Verificando vector store...")
-        try:
-            # Hacer una búsqueda de prueba para verificar que hay documentos
-            test_docs = vector_store.similarity_search("test", k=1)
-            print(f"✅ Vector store tiene documentos: {len(test_docs)} documentos encontrados en búsqueda de prueba")
-        except Exception as e:
-            print(f"⚠️ Error verificando vector store (continuando de todas formas): {str(e)}")
-            # No lanzar la excepción, solo loguear - puede que el vector store esté vacío pero aún así podemos intentar
-        
-        # Crear cadena conversacional
-        chain = self.create_conversation_chain(vector_store, memory)
+        # Si no se usan documentos, crear cadena conversacional simple
+        if not use_documents or vector_store is None:
+            print(f"💬 Modo conversación general (sin documentos)")
+            chain = self.create_conversation_chain(
+                vector_store=None,
+                memory=memory,
+                use_documents=False
+            )
+        else:
+            # Verificar que hay documentos en el vector store antes de hacer la pregunta
+            print(f"🔍 Verificando vector store...")
+            try:
+                # Hacer una búsqueda de prueba para verificar que hay documentos
+                test_docs = vector_store.similarity_search("test", k=1)
+                print(f"✅ Vector store tiene documentos: {len(test_docs)} documentos encontrados en búsqueda de prueba")
+            except Exception as e:
+                print(f"⚠️ Error verificando vector store (continuando de todas formas): {str(e)}")
+            
+            # Crear cadena conversacional con RAG
+            chain = self.create_conversation_chain(
+                vector_store=vector_store,
+                memory=memory,
+                use_documents=True
+            )
         
         # Hacer pregunta
         print(f"❓ Procesando pregunta: {question}")
-        print(f"🔍 Buscando en {settings.RAG_TOP_K_RESULTS} documentos más relevantes...")
+        if use_documents and vector_store is not None:
+            print(f"🔍 Buscando en {settings.RAG_TOP_K_RESULTS} documentos más relevantes...")
         
         # Verificar historial antes de la pregunta
         if memory:
@@ -322,19 +373,31 @@ Respuesta basada únicamente en los documentos:""",
             if history_before:
                 print(f"📝 Último mensaje del historial: {history_before[-1]}")
         
-        # ConversationalRetrievalChain debería actualizar la memoria automáticamente
+        # Invocar la cadena (diferente formato según el tipo de cadena)
         try:
-            result = chain.invoke({"question": question})
-            print(f"✅ Respuesta generada: {result.get('answer', '')[:100] if result.get('answer') else 'Sin respuesta'}...")
+            if not use_documents or vector_store is None:
+                # ConversationChain usa "input" en lugar de "question"
+                result = chain.invoke({"input": question})
+                answer = result.get("response", result.get("answer", ""))
+                source_docs = []
+            else:
+                # ConversationalRetrievalChain usa "question"
+                result = chain.invoke({"question": question})
+                answer = result.get("answer", "")
+                source_docs = result.get("source_documents", [])
+            
+            print(f"✅ Respuesta generada: {answer[:100] if answer else 'Sin respuesta'}...")
         except Exception as e:
             print(f"❌ Error invocando la cadena: {str(e)}")
             import traceback
             traceback.print_exc()
             raise  # Re-lanzar para que el controlador lo maneje
         
-        # Obtener documentos fuente
-        source_docs = result.get("source_documents", [])
-        print(f"📄 Documentos fuente encontrados: {len(source_docs)}")
+        # Obtener documentos fuente (solo si se usaron documentos)
+        if use_documents and vector_store is not None:
+            print(f"📄 Documentos fuente encontrados: {len(source_docs)}")
+        else:
+            source_docs = []
         
         # Verificar historial después de la pregunta
         if memory:
@@ -356,8 +419,7 @@ Respuesta basada únicamente en los documentos:""",
                 except Exception as e:
                     print(f"   Debug error: {str(e)}")
         
-        # Asegurar que answer no sea None
-        answer = result.get("answer", "")
+        # Asegurar que answer no sea None (ya se obtuvo arriba en el bloque try)
         if not answer:
             answer = "No se pudo generar una respuesta."
         
