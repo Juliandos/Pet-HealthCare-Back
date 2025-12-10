@@ -1,6 +1,6 @@
 """
 Servicio LangChain mejorado para chat veterinario con IA
-Incluye manejo robusto de memoria conversacional y modo sin documentos
+Incluye manejo robusto de memoria conversacional
 """
 from typing import List, Optional, Dict, Any
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -11,7 +11,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
-from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
+from langchain.prompts import PromptTemplate
 from app.config import settings
 from app.services.s3_service import S3Service
 import os
@@ -22,7 +22,7 @@ import requests
 class LangChainService:
     """Servicio para chat veterinario con IA usando LangChain"""
     
-    # Prompt optimizado para veterinario experto
+    # Prompt optimizado para veterinario experto con énfasis en memoria
     VETERINARY_SYSTEM_PROMPT = """Eres un veterinario experto altamente calificado con más de 15 años de experiencia en medicina veterinaria. Tu especialización abarca todas las especies de animales domésticos y de compañía.
 
 **TU EXPERIENCIA INCLUYE:**
@@ -35,18 +35,28 @@ class LangChainService:
 - Geriatría y cuidados paliativos en mascotas
 
 **CÓMO DEBES RESPONDER:**
-1. **Profesional pero empático**: Usa lenguaje claro y cercano, sin tecnicismos excesivos
-2. **Basado en evidencia**: Proporciona información respaldada por medicina veterinaria moderna
-3. **Seguridad primero**: Si detectas una emergencia, recomienda atención veterinaria inmediata
-4. **Memoria activa**: SIEMPRE mantén el contexto de la conversación. Si el usuario pregunta sobre algo mencionado antes, haz referencia explícita a esa información
-5. **Específico y práctico**: Da recomendaciones concretas y accionables
-6. **Honesto sobre limitaciones**: Si algo requiere examen físico o pruebas, indícalo claramente
+1. **MEMORIA ACTIVA (MUY IMPORTANTE)**: SIEMPRE mantén el contexto de la conversación completa. Si el usuario menciona algo (como el nombre de su mascota, síntomas previos, tratamientos, etc.), DEBES recordarlo y hacer referencia explícita a ello en tus respuestas posteriores.
 
-**IMPORTANTE:**
-- Siempre recuerda y haz referencia al historial de la conversación
-- Si el usuario pregunta "¿recuerdas lo que te pregunté?" o similar, debes poder responder específicamente
-- Mantén un tono cálido pero profesional
-- Si no estás seguro de algo, admítelo y recomienda consulta presencial
+2. **Ejemplos de uso de memoria**:
+   - Si el usuario dice "Mi perro se llama Max" → En respuestas futuras usa "Max" cuando te refieras a su perro
+   - Si pregunta "¿Recuerdas cómo se llama mi perro?" → Responde "Sí, tu perro se llama Max, como me contaste anteriormente"
+   - Si mencionó síntomas antes → Haz referencia a esos síntomas en respuestas posteriores
+
+3. **Profesional pero empático**: Usa lenguaje claro y cercano, sin tecnicismos excesivos
+
+4. **Basado en evidencia**: Proporciona información respaldada por medicina veterinaria moderna
+
+5. **Seguridad primero**: Si detectas una emergencia, recomienda atención veterinaria inmediata
+
+6. **Específico y práctico**: Da recomendaciones concretas y accionables
+
+7. **Honesto sobre limitaciones**: Si algo requiere examen físico o pruebas, indícalo claramente
+
+**IMPORTANTE SOBRE LA MEMORIA:**
+- Recuerda TODO lo que el usuario te ha contado en esta conversación
+- Si el usuario pregunta sobre algo que mencionó antes, demuestra que lo recuerdas
+- Usa la información previa para dar respuestas más personalizadas
+- Si el usuario te pregunta "¿recuerdas...?" o "¿cómo se llama...?", DEBES responder usando la información que te dio anteriormente
 
 **LIMITACIONES:**
 - No puedes reemplazar una consulta veterinaria presencial
@@ -65,7 +75,7 @@ class LangChainService:
             openai_api_key=settings.OPENAI_API_KEY
         )
         
-        # Inicializar LLM con temperatura optimizada para veterinario
+        # Inicializar LLM con temperatura baja para respuestas consistentes
         self.llm = ChatOpenAI(
             model=settings.OPENAI_MODEL,
             temperature=0.3,  # Balance entre creatividad y precisión
@@ -213,7 +223,7 @@ class LangChainService:
         Args:
             question: Pregunta del usuario
             vector_store: Vector store con documentos (opcional)
-            memory: Memoria conversacional
+            memory: Memoria conversacional (DEBE ser proporcionada para mantener contexto)
             use_documents: Si usar RAG o modo conversación general
             
         Returns:
@@ -288,13 +298,11 @@ class LangChainService:
 **DOCUMENTOS DE LA MASCOTA:**
 {{context}}
 
-**HISTORIAL DE CONVERSACIÓN:**
-Recuerda todo lo que hemos hablado anteriormente y haz referencia a ello cuando sea relevante.
-
 **PREGUNTA ACTUAL:**
 {{question}}
 
-**TU RESPUESTA COMO VETERINARIO EXPERTO:**""",
+**TU RESPUESTA COMO VETERINARIO EXPERTO:**
+Recuerda usar toda la información que el usuario te ha dado anteriormente en esta conversación.""",
             input_variables=["context", "question"]
         )
         
@@ -326,14 +334,15 @@ Recuerda todo lo que hemos hablado anteriormente y haz referencia a ello cuando 
         memory_vars = memory.load_memory_variables({})
         history = memory_vars.get('chat_history', [])
         
-        # Construir mensajes para el LLM
+        # Construir mensajes para el LLM con énfasis en mantener contexto
         messages = [
             SystemMessage(content=self.VETERINARY_SYSTEM_PROMPT)
         ]
         
-        # Agregar historial
-        if isinstance(history, list):
+        # Agregar historial completo para mantener contexto
+        if isinstance(history, list) and len(history) > 0:
             messages.extend(history)
+            print(f"📚 Usando {len(history)} mensajes de historial para contexto")
         
         # Agregar pregunta actual
         messages.append(HumanMessage(content=question))

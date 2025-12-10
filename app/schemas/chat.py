@@ -1,5 +1,6 @@
 """
-Schemas Pydantic actualizados para chat con IA veterinaria
+Schemas Pydantic para chat con IA veterinaria
+Incluye configuración de memoria conversacional
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -21,7 +22,7 @@ class ChatQuestionRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "question": "Mi perro tiene 5 años y últimamente ha estado comiendo menos. ¿Debería preocuparme?",
+                "question": "Mi perro se llama Max y tiene 5 años. Últimamente come menos, ¿debería preocuparme?",
                 "session_id": "user123_pet456"
             }
         }
@@ -72,7 +73,7 @@ class ChatResponse(BaseModel):
     )
     chat_history: List[ChatMessage] = Field(
         default_factory=list,
-        description="Historial completo de la conversación"
+        description="Historial completo de la conversación (últimas 6 interacciones)"
     )
     has_documents: bool = Field(
         ..., 
@@ -82,6 +83,10 @@ class ChatResponse(BaseModel):
         None, 
         description="ID de sesión para continuar la conversación"
     )
+    memory_info: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Información sobre el estado de la memoria"
+    )
     error: Optional[str] = Field(
         None, 
         description="Mensaje de error si algo falló (null si todo OK)"
@@ -90,26 +95,26 @@ class ChatResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "answer": "Basándome en los documentos médicos de tu mascota, la última vacunación fue el 15 de marzo de 2024 (vacuna antirrábica). Según el calendario recomendado, la próxima dosis debería aplicarse alrededor del 15 de marzo de 2025. Te recomiendo programar una cita con tu veterinario 2-3 semanas antes de esa fecha.",
-                "source_documents": [
-                    {
-                        "content": "Vacunación antirrábica - Fecha: 15/03/2024",
-                        "source": "certificado_vacunacion_2024.pdf",
-                        "page": 1
-                    }
-                ],
+                "answer": "Basándome en lo que me contaste sobre Max, tu perro de 5 años que come menos últimamente, te recomiendo observar otros síntomas como letargo, vómitos o cambios en el comportamiento. La disminución del apetito puede tener varias causas...",
+                "source_documents": [],
                 "chat_history": [
                     {
                         "role": "user",
-                        "content": "¿Cuándo fue la última vacunación de mi perro?"
+                        "content": "Mi perro se llama Max y tiene 5 años. Últimamente come menos, ¿debería preocuparme?"
                     },
                     {
                         "role": "assistant",
-                        "content": "Basándome en los documentos médicos..."
+                        "content": "Basándome en lo que me contaste sobre Max..."
                     }
                 ],
-                "has_documents": True,
+                "has_documents": False,
                 "session_id": "user123_pet456",
+                "memory_info": {
+                    "current_messages": 2,
+                    "max_messages": 12,
+                    "interactions_count": 1,
+                    "max_interactions": 6
+                },
                 "error": None
             }
         }
@@ -126,6 +131,10 @@ class ConversationHistoryResponse(BaseModel):
         default=0,
         description="Número total de mensajes en la conversación"
     )
+    interactions_count: int = Field(
+        default=0,
+        description="Número de interacciones (pares pregunta-respuesta)"
+    )
     
     class Config:
         json_schema_extra = {
@@ -134,22 +143,23 @@ class ConversationHistoryResponse(BaseModel):
                 "history": [
                     {
                         "role": "user",
-                        "content": "¿Mi perro puede comer chocolate?"
+                        "content": "Mi perro se llama Max"
                     },
                     {
                         "role": "assistant",
-                        "content": "No, el chocolate es tóxico para los perros..."
+                        "content": "Encantado de conocer a Max. ¿En qué puedo ayudarte con él?"
                     },
                     {
                         "role": "user",
-                        "content": "¿Qué síntomas tendría si comió un poco?"
+                        "content": "¿Cómo se llama mi perro?"
                     },
                     {
                         "role": "assistant",
-                        "content": "Los síntomas de intoxicación por chocolate incluyen..."
+                        "content": "Tu perro se llama Max, como me contaste anteriormente."
                     }
                 ],
-                "message_count": 4
+                "message_count": 4,
+                "interactions_count": 2
             }
         }
 
@@ -164,6 +174,8 @@ class SessionStatsResponse(BaseModel):
     session_id: str = Field(..., description="ID de la sesión")
     message_count: int = Field(..., description="Número de mensajes en memoria")
     max_messages: int = Field(..., description="Límite máximo de mensajes")
+    interactions_count: int = Field(..., description="Número de interacciones")
+    max_interactions: int = Field(..., description="Límite máximo de interacciones")
     memory_usage: str = Field(..., description="Uso de memoria (formato: actual/máximo)")
     
     class Config:
@@ -171,8 +183,10 @@ class SessionStatsResponse(BaseModel):
             "example": {
                 "session_id": "user123_pet456",
                 "message_count": 8,
-                "max_messages": 20,
-                "memory_usage": "8/20"
+                "max_messages": 12,
+                "interactions_count": 4,
+                "max_interactions": 6,
+                "memory_usage": "4/6 interacciones (8/12 mensajes)"
             }
         }
 
