@@ -239,15 +239,13 @@ class LangChainService:
             # Crear memoria si no se proporciona
             if memory is None:
                 memory = ConversationBufferMemory(
-                    memory_key="history",
-                    return_messages=False,  # ConversationChain espera string, no mensajes
-                    output_key="response"
+                    return_messages=False  # ConversationChain espera string, no mensajes
                 )
             
             from langchain.chains import ConversationChain
             
             # Prompt para veterinario experto general
-            # ConversationChain maneja automáticamente el historial
+            # Usar el prompt por defecto de ConversationChain pero con instrucciones de veterinario
             prompt = PromptTemplate(
                 input_variables=["history", "input"],
                 template="""Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
@@ -269,15 +267,15 @@ IMPORTANTE:
 - Si el usuario pregunta sobre algo mencionado anteriormente, usa esa información
 - Sé específico y detallado en tus respuestas
 
-Historial de conversación:
+Historial de conversación anterior:
 {history}
 
-Pregunta actual: {input}
+Pregunta actual del usuario: {input}
 
-Respuesta del veterinario:"""
+Respuesta del veterinario experto:"""
             )
             
-            # Usar ConversationChain que maneja mejor la memoria
+            # Usar ConversationChain con el prompt personalizado
             chain = ConversationChain(
                 llm=self.llm,
                 memory=memory,
