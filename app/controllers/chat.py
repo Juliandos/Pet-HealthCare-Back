@@ -86,10 +86,12 @@ class ChatController:
         
         if session_id not in ChatController._conversation_memories:
             from app.config import settings
+            # output_key será "text" para conversación general o "answer" para RAG
+            # Se ajustará según use_documents, pero por defecto usamos "text" para conversación general
             ChatController._conversation_memories[session_id] = ConversationBufferMemory(
                 memory_key="chat_history",
                 return_messages=True,
-                output_key="answer",
+                output_key="text",  # LLMChain usa "text" como output_key
                 max_token_limit=2000  # Limitar tokens para evitar memoria excesiva
             )
         

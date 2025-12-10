@@ -10,7 +10,7 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import PGVector
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain, ConversationChain
+from langchain.chains import ConversationalRetrievalChain, LLMChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
@@ -234,20 +234,20 @@ class LangChainService:
         Returns:
             Cadena conversacional configurada
         """
-        # Crear memoria si no se proporciona
-        if memory is None:
-            memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True,
-                output_key="answer"
-            )
-        
         # Si no se usan documentos, crear una cadena conversacional simple
         if not use_documents or vector_store is None:
-            from langchain.chains import ConversationChain
+            # Crear memoria si no se proporciona (con output_key="text" para LLMChain)
+            if memory is None:
+                memory = ConversationBufferMemory(
+                    memory_key="chat_history",
+                    return_messages=True,
+                    output_key="text"  # LLMChain usa "text" como output_key
+                )
+            from langchain.chains import LLMChain
             from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
             
-            # Prompt para veterinario experto general
+            # Prompt para veterinario experto general con memoria explícita
+            # El MessagesPlaceholder se llenará automáticamente con la memoria
             prompt = ChatPromptTemplate.from_messages([
                 ("system", """Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
 
@@ -264,13 +264,15 @@ IMPORTANTE:
 - Responde de manera profesional, clara y empática
 - Proporciona información útil y práctica
 - Si no estás seguro de algo, recomienda consultar con un veterinario presencial
-- Mantén el contexto de la conversación anterior
+- SIEMPRE mantén el contexto de la conversación anterior y haz referencia a preguntas y respuestas previas cuando sea relevante
+- Si el usuario pregunta sobre algo mencionado anteriormente, usa esa información
 - Sé específico y detallado en tus respuestas"""),
                 MessagesPlaceholder(variable_name="chat_history"),
                 ("human", "{input}")
             ])
             
-            chain = ConversationChain(
+            # Usar LLMChain con memoria para asegurar que el historial se pase correctamente
+            chain = LLMChain(
                 llm=self.llm,
                 memory=memory,
                 prompt=prompt,
@@ -376,9 +378,9 @@ Respuesta:""",
         # Invocar la cadena (diferente formato según el tipo de cadena)
         try:
             if not use_documents or vector_store is None:
-                # ConversationChain usa "input" en lugar de "question"
+                # LLMChain usa "input" y devuelve "text"
                 result = chain.invoke({"input": question})
-                answer = result.get("response", result.get("answer", ""))
+                answer = result.get("text", result.get("response", result.get("answer", "")))
                 source_docs = []
             else:
                 # ConversationalRetrievalChain usa "question"
