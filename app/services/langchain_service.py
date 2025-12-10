@@ -245,7 +245,6 @@ class LangChainService:
                 )
             
             from langchain.chains import ConversationChain
-            from langchain.prompts import PromptTemplate
             
             # Prompt para veterinario experto general
             # ConversationChain maneja automáticamente el historial
