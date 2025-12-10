@@ -10,7 +10,7 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import PGVector
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain, LLMChain
+from langchain.chains import ConversationalRetrievalChain, ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
@@ -236,20 +236,22 @@ class LangChainService:
         """
         # Si no se usan documentos, crear una cadena conversacional simple
         if not use_documents or vector_store is None:
-            # Crear memoria si no se proporciona (con output_key="text" para LLMChain)
+            # Crear memoria si no se proporciona
             if memory is None:
                 memory = ConversationBufferMemory(
-                    memory_key="chat_history",
-                    return_messages=True,
-                    output_key="text"  # LLMChain usa "text" como output_key
+                    memory_key="history",
+                    return_messages=False,  # ConversationChain espera string, no mensajes
+                    output_key="response"
                 )
-            from langchain.chains import LLMChain
-            from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
             
-            # Prompt para veterinario experto general con memoria explícita
-            # El MessagesPlaceholder se llenará automáticamente con la memoria
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", """Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
+            from langchain.chains import ConversationChain
+            from langchain.prompts import PromptTemplate
+            
+            # Prompt para veterinario experto general
+            # ConversationChain maneja automáticamente el historial
+            prompt = PromptTemplate(
+                input_variables=["history", "input"],
+                template="""Eres un veterinario experto y profesional especializado en el cuidado de todo tipo de mascotas y animales domésticos.
 
 Tu conocimiento abarca:
 - Diagnóstico y tratamiento de enfermedades comunes
@@ -266,13 +268,18 @@ IMPORTANTE:
 - Si no estás seguro de algo, recomienda consultar con un veterinario presencial
 - SIEMPRE mantén el contexto de la conversación anterior y haz referencia a preguntas y respuestas previas cuando sea relevante
 - Si el usuario pregunta sobre algo mencionado anteriormente, usa esa información
-- Sé específico y detallado en tus respuestas"""),
-                MessagesPlaceholder(variable_name="chat_history"),
-                ("human", "{input}")
-            ])
+- Sé específico y detallado en tus respuestas
+
+Historial de conversación:
+{history}
+
+Pregunta actual: {input}
+
+Respuesta del veterinario:"""
+            )
             
-            # Usar LLMChain con memoria para asegurar que el historial se pase correctamente
-            chain = LLMChain(
+            # Usar ConversationChain que maneja mejor la memoria
+            chain = ConversationChain(
                 llm=self.llm,
                 memory=memory,
                 prompt=prompt,
@@ -378,9 +385,9 @@ Respuesta:""",
         # Invocar la cadena (diferente formato según el tipo de cadena)
         try:
             if not use_documents or vector_store is None:
-                # LLMChain usa "input" y devuelve "text"
+                # ConversationChain usa "input" y devuelve "response"
                 result = chain.invoke({"input": question})
-                answer = result.get("text", result.get("response", result.get("answer", "")))
+                answer = result.get("response", result.get("answer", ""))
                 source_docs = []
             else:
                 # ConversationalRetrievalChain usa "question"
@@ -468,48 +475,88 @@ Respuesta:""",
         try:
             # Método más confiable: usar load_memory_variables primero
             memory_vars = memory.load_memory_variables({})
-            chat_history = memory_vars.get('chat_history', [])
             
-            # Si chat_history es una lista de mensajes
-            if isinstance(chat_history, list) and len(chat_history) > 0:
-                messages = chat_history
-            # Si chat_history es un string (formato antiguo), intentar parsearlo
-            elif isinstance(chat_history, str) and chat_history.strip():
-                # Intentar acceder directamente a los mensajes
-                if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
-                    messages = memory.chat_memory.messages
-                elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
-                    messages = memory.buffer.messages
-                else:
-                    messages = []
-            else:
-                # Intentar acceder directamente a los mensajes
-                if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
-                    messages = memory.chat_memory.messages
-                elif hasattr(memory, 'buffer') and hasattr(memory.buffer, 'messages'):
-                    messages = memory.buffer.messages
-                elif hasattr(memory, 'chat_history'):
-                    messages = memory.chat_history.messages if hasattr(memory.chat_history, 'messages') else []
-                else:
-                    messages = []
+            # ConversationChain usa "history" como key, ConversationalRetrievalChain usa "chat_history"
+            chat_history = memory_vars.get('history', memory_vars.get('chat_history', ''))
             
-            # Procesar mensajes
-            for msg in messages:
-                if hasattr(msg, 'content'):
-                    # Determinar el rol del mensaje
-                    msg_type = type(msg).__name__
-                    if 'Human' in msg_type or 'user' in msg_type.lower() or 'HumanMessage' in msg_type:
-                        role = "user"
-                    elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
-                        role = "assistant"
+            # Si chat_history es un string (formato de ConversationChain)
+            if isinstance(chat_history, str) and chat_history.strip():
+                # Parsear el string del historial (formato: "Human: ...\nAI: ...")
+                lines = chat_history.split('\n')
+                current_role = None
+                current_content = []
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if line.startswith('Human:'):
+                        # Guardar mensaje anterior si existe
+                        if current_role and current_content:
+                            history.append({
+                                "role": current_role,
+                                "content": ' '.join(current_content).strip()
+                            })
+                        current_role = "user"
+                        current_content = [line.replace('Human:', '').strip()]
+                    elif line.startswith('AI:') or line.startswith('Assistant:'):
+                        # Guardar mensaje anterior si existe
+                        if current_role and current_content:
+                            history.append({
+                                "role": current_role,
+                                "content": ' '.join(current_content).strip()
+                            })
+                        current_role = "assistant"
+                        current_content = [line.replace('AI:', '').replace('Assistant:', '').strip()]
                     else:
-                        role = "user"  # Por defecto
-                    
+                        # Continuación del mensaje anterior
+                        if current_content:
+                            current_content.append(line)
+                
+                # Guardar último mensaje
+                if current_role and current_content:
                     history.append({
-                        "role": role,
-                        "content": msg.content
+                        "role": current_role,
+                        "content": ' '.join(current_content).strip()
                     })
-                    
+            
+            # Si chat_history es una lista de mensajes (formato de ConversationalRetrievalChain)
+            elif isinstance(chat_history, list) and len(chat_history) > 0:
+                for msg in chat_history:
+                    if hasattr(msg, 'content'):
+                        # Determinar el rol del mensaje
+                        msg_type = type(msg).__name__
+                        if 'Human' in msg_type or 'user' in msg_type.lower() or 'HumanMessage' in msg_type:
+                            role = "user"
+                        elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
+                            role = "assistant"
+                        else:
+                            role = "user"  # Por defecto
+                        
+                        history.append({
+                            "role": role,
+                            "content": msg.content
+                        })
+            
+            # Si no hay nada en load_memory_variables, intentar acceder directamente
+            if not history:
+                if hasattr(memory, 'chat_memory') and hasattr(memory.chat_memory, 'messages'):
+                    messages = memory.chat_memory.messages
+                    for msg in messages:
+                        if hasattr(msg, 'content'):
+                            msg_type = type(msg).__name__
+                            if 'Human' in msg_type or 'user' in msg_type.lower() or 'HumanMessage' in msg_type:
+                                role = "user"
+                            elif 'AI' in msg_type or 'assistant' in msg_type.lower() or 'AIMessage' in msg_type:
+                                role = "assistant"
+                            else:
+                                role = "user"
+                            history.append({
+                                "role": role,
+                                "content": msg.content
+                            })
+                            
         except Exception as e:
             # Si hay error, retornar lista vacía
             print(f"⚠️ Error extrayendo historial: {str(e)}")
