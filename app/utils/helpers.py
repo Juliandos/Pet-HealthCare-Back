@@ -2,36 +2,78 @@ from datetime import date
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
+from dateutil.relativedelta import relativedelta
 
 
-def calculate_age_years(birth_date: Optional[date]) -> Optional[int]:
+def calculate_age_years(birth_date: Optional[date]) -> Optional[float]:
     """
-    Calcula la edad en años basado en la fecha de nacimiento
+    Calcula la edad en años con decimales basado en la fecha de nacimiento
+    Incluye meses como fracción de año (ej: 1 año y 6 meses = 1.5 años)
     
     Args:
         birth_date: Fecha de nacimiento
     
     Returns:
-        Edad en años o None si no hay birth_date
+        Edad en años con decimales o None si no hay birth_date
     
-    Example:
+    Examples:
         >>> from datetime import date
-        >>> birth_date = date(2020, 5, 15)
+        >>> birth_date = date(2023, 1, 15)  # 15 enero 2023
+        >>> today = date(2024, 7, 15)  # 15 julio 2024
         >>> age = calculate_age_years(birth_date)
         >>> age
-        4  # (en 2024)
+        1.5  # 1 año y 6 meses
+        
+        >>> birth_date = date(2023, 12, 1)  # 1 diciembre 2023
+        >>> today = date(2024, 1, 1)  # 1 enero 2024
+        >>> age = calculate_age_years(birth_date)
+        >>> age
+        0.083333  # 1 mes (1/12 = 0.083333)
+        
+        >>> birth_date = date(2023, 10, 1)  # 1 octubre 2023
+        >>> today = date(2024, 1, 1)  # 1 enero 2024
+        >>> age = calculate_age_years(birth_date)
+        >>> age
+        0.25  # 3 meses (3/12 = 0.25)
     """
     if not birth_date:
         return None
     
     today = date.today()
-    age = today.year - birth_date.year
     
-    # Ajustar si el cumpleaños aún no ha pasado este año
-    if (today.month, today.day) < (birth_date.month, birth_date.day):
-        age -= 1
+    # Usar relativedelta para calcular diferencia exacta en años y meses
+    delta = relativedelta(today, birth_date)
     
-    return age
+    # Obtener años y meses
+    years = delta.years
+    months = delta.months
+    
+    # Si el día actual es menor que el día de nacimiento,
+    # aún no ha cumplido el mes completo, así que no contamos ese mes
+    if today.day < birth_date.day:
+        months -= 1
+        # Si meses es negativo, ajustar
+        if months < 0:
+            months = 11
+            years -= 1
+    
+    # Asegurar que meses esté en rango 0-11
+    if months < 0:
+        months = 0
+    elif months > 11:
+        # Esto no debería pasar con relativedelta, pero por seguridad
+        extra_years = months // 12
+        years += extra_years
+        months = months % 12
+    
+    # Convertir meses a fracción de año
+    months_fraction = months / 12.0
+    
+    # Calcular edad total en años con decimales
+    age = years + months_fraction
+    
+    # Redondear a 6 decimales para precisión
+    return round(age, 6)
 
 
 def get_pet_profile_photo(db: Session, pet_id: str) -> Optional[str]:

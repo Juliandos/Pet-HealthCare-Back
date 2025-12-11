@@ -62,7 +62,7 @@ class PetResponse(PetBase):
     """Schema para respuesta de mascota"""
     id: str
     owner_id: str
-    age_years: Optional[int] = None  # ← Calculado dinámicamente
+    age_years: Optional[float] = None  # ← Calculado dinámicamente (con decimales para incluir meses)
     photo_url: Optional[str] = None  # ← Obtenido de pet_photos
     created_at: str
     updated_at: str
@@ -83,7 +83,7 @@ class PetWithStats(BaseModel):
     species: str
     breed: Optional[str]
     birth_date: Optional[date]
-    age_years: Optional[int]  # Calculado
+    age_years: Optional[float]  # Calculado (con decimales para incluir meses)
     weight_kg: Optional[Decimal]
     sex: Optional[str]
     photo_url: Optional[str]  # Obtenido de pet_photos
@@ -112,7 +112,7 @@ class PetSummary(BaseModel):
     name: str
     species: str
     breed: Optional[str]
-    age_years: Optional[int]  # Calculado
+    age_years: Optional[float]  # Calculado (con decimales para incluir meses)
     photo_url: Optional[str]  # Obtenido de pet_photos
     
     class Config:

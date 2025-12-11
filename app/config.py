@@ -58,7 +58,7 @@ class Settings:
         "ALLOWED_DOCUMENT_EXTENSIONS",
         "pdf"
     ).split(",")
-    
+
     # OpenAI Configuration (para LangChain)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
