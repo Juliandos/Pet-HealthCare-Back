@@ -6,10 +6,24 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Obtener DATABASE_URL de las variables de entorno (para Render)
+# Si existe DATABASE_URL en el entorno, usarla en lugar de la del .ini
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    # Render usa postgres:// pero SQLAlchemy necesita postgresql+psycopg2://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

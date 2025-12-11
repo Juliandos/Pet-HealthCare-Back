@@ -8,9 +8,11 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "🔄 Ejecutando migraciones de base de datos..."
-alembic upgrade head || echo "⚠️ Error en migraciones, continuando..."
-
-echo "🗄️ Inicializando base de datos..."
-python init_db.py
+# Solo ejecutar migraciones si DATABASE_URL está configurada
+if [ -n "$DATABASE_URL" ]; then
+    alembic upgrade head || echo "⚠️ Error en migraciones, continuando..."
+else
+    echo "⚠️ DATABASE_URL no configurada, saltando migraciones..."
+fi
 
 echo "✅ Build completado"
