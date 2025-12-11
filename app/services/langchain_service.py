@@ -100,46 +100,102 @@ class LangChainService:
     def _download_pdf_from_s3(self, s3_url: str) -> str:
         """Descarga un PDF desde S3 a archivo temporal"""
         try:
+            print(f"   📥 Descargando PDF desde S3...")
+            print(f"      URL: {s3_url[:100]}...")
+            
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
             temp_path = temp_file.name
             temp_file.close()
             
-            response = requests.get(s3_url, stream=True, timeout=30)
+            # Descargar con timeout y headers apropiados
+            headers = {
+                'User-Agent': 'Pet-Healthcare-AI/1.0'
+            }
+            response = requests.get(s3_url, stream=True, timeout=60, headers=headers)
             response.raise_for_status()
             
+            # Escribir archivo
+            total_size = 0
             with open(temp_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+                    if chunk:
+                        f.write(chunk)
+                        total_size += len(chunk)
             
+            print(f"      ✅ Descargado: {total_size / 1024:.2f} KB")
             return temp_path
+            
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Error de red descargando PDF: {str(e)}"
+            print(f"      ❌ {error_msg}")
+            raise Exception(error_msg)
         except Exception as e:
-            raise Exception(f"Error descargando PDF: {str(e)}")
+            error_msg = f"Error inesperado descargando PDF: {str(e)}"
+            print(f"      ❌ {error_msg}")
+            raise Exception(error_msg)
     
     def _load_pdf_documents(self, pdf_urls: List[str]) -> List[Document]:
-        """Carga y procesa múltiples PDFs"""
+        """Carga y procesa múltiples PDFs con manejo robusto de errores"""
         all_documents = []
         
-        for pdf_url in pdf_urls:
+        for idx, pdf_url in enumerate(pdf_urls, 1):
+            print(f"\n📄 Procesando PDF {idx}/{len(pdf_urls)}")
+            temp_path = None
+            
             try:
+                # Descargar PDF
                 temp_path = self._download_pdf_from_s3(pdf_url)
                 
-                try:
-                    loader = PyPDFLoader(temp_path)
-                    documents = loader.load()
-                    
-                    for doc in documents:
-                        doc.metadata['source'] = pdf_url
-                        doc.metadata['source_type'] = 'pet_document'
-                    
-                    all_documents.extend(documents)
-                finally:
-                    if os.path.exists(temp_path):
-                        os.unlink(temp_path)
-                        
+                # Verificar que el archivo se descargó correctamente
+                if not os.path.exists(temp_path):
+                    raise Exception("Archivo temporal no se creó correctamente")
+                
+                file_size = os.path.getsize(temp_path)
+                print(f"   📏 Tamaño del archivo: {file_size / 1024:.2f} KB")
+                
+                if file_size == 0:
+                    raise Exception("Archivo descargado está vacío")
+                
+                # Cargar PDF con PyPDFLoader
+                print(f"   📖 Leyendo contenido del PDF...")
+                loader = PyPDFLoader(temp_path)
+                documents = loader.load()
+                
+                if not documents:
+                    raise Exception("No se pudo extraer contenido del PDF")
+                
+                print(f"   ✅ Extraídas {len(documents)} página(s)")
+                
+                # Agregar metadata
+                for doc in documents:
+                    doc.metadata['source'] = pdf_url
+                    doc.metadata['source_type'] = 'pet_document'
+                    # Agregar nombre del archivo si está disponible
+                    if 'file_name' in doc.metadata:
+                        doc.metadata['file_name'] = pdf_url.split('/')[-1]
+                
+                all_documents.extend(documents)
+                print(f"   ✅ PDF procesado exitosamente")
+                
             except Exception as e:
-                print(f"⚠️ Error procesando PDF {pdf_url}: {str(e)}")
+                print(f"   ❌ Error procesando PDF {idx}: {str(e)}")
+                import traceback
+                print(f"   Traceback: {traceback.format_exc()}")
                 continue
+                
+            finally:
+                # Limpiar archivo temporal
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                        print(f"   🗑️ Archivo temporal eliminado")
+                    except Exception as e:
+                        print(f"   ⚠️ No se pudo eliminar archivo temporal: {str(e)}")
         
+        if not all_documents:
+            raise Exception("No se pudo procesar ningún PDF correctamente")
+        
+        print(f"\n✅ Total: {len(all_documents)} página(s) de {len(pdf_urls)} PDF(s)")
         return all_documents
     
     def create_vector_store(
@@ -148,20 +204,38 @@ class LangChainService:
         pet_id: str,
         collection_name: Optional[str] = None
     ) -> PGVector:
-        """Crea vector store para documentos de mascota"""
+        """Crea vector store para documentos de mascota con manejo robusto de errores"""
         if not pdf_urls:
             raise ValueError("No hay PDFs para procesar")
         
-        print(f"📄 Cargando {len(pdf_urls)} PDF(s)...")
-        documents = self._load_pdf_documents(pdf_urls)
+        print(f"\n{'='*60}")
+        print(f"🔧 INICIANDO PROCESAMIENTO DE DOCUMENTOS")
+        print(f"{'='*60}")
+        print(f"📊 Mascotas ID: {pet_id}")
+        print(f"📄 Total de PDFs: {len(pdf_urls)}")
         
-        if not documents:
-            raise ValueError("No se pudieron cargar documentos")
+        # Cargar y procesar PDFs
+        try:
+            documents = self._load_pdf_documents(pdf_urls)
+            
+            if not documents:
+                raise ValueError("No se pudieron cargar documentos de ningún PDF")
+            
+            print(f"\n✂️ Dividiendo documentos en chunks...")
+            chunks = self.text_splitter.split_documents(documents)
+            
+            if not chunks:
+                raise ValueError("No se pudieron crear chunks de los documentos")
+            
+            print(f"✅ {len(chunks)} chunks creados")
+            print(f"   📏 Promedio de caracteres por chunk: {sum(len(c.page_content) for c in chunks) / len(chunks):.0f}")
+            
+        except Exception as e:
+            print(f"\n❌ ERROR EN PROCESAMIENTO DE DOCUMENTOS:")
+            print(f"   {str(e)}")
+            raise
         
-        print(f"✂️ Dividiendo en chunks...")
-        chunks = self.text_splitter.split_documents(documents)
-        print(f"✅ {len(chunks)} chunks creados")
-        
+        # Preparar conexión a PostgreSQL
         if not collection_name:
             collection_name = f"pet_{pet_id}_documents"
         
@@ -175,8 +249,11 @@ class LangChainService:
                 "postgresql://", "postgresql+psycopg://", 1
             )
         
-        print(f"💾 Almacenando embeddings en PostgreSQL...")
+        print(f"\n💾 Almacenando embeddings en PostgreSQL...")
+        print(f"   📦 Colección: {collection_name}")
+        
         try:
+            # Intentar crear vector store
             vector_store = PGVector.from_documents(
                 documents=chunks,
                 embedding=self.embeddings,
@@ -184,10 +261,14 @@ class LangChainService:
                 connection_string=connection_string,
                 pre_delete_collection=False,
             )
-            print(f"✅ Embeddings almacenados")
+            print(f"✅ Vector store creado exitosamente")
+            
         except Exception as e:
-            print(f"⚠️ Recreando colección...")
+            print(f"⚠️ Error creando vector store, intentando recrear colección...")
+            print(f"   Error: {str(e)}")
+            
             try:
+                # Intentar eliminar colección existente
                 temp_store = PGVector(
                     collection_name=collection_name,
                     connection_string=connection_string,
@@ -195,18 +276,29 @@ class LangChainService:
                 )
                 try:
                     temp_store.delete_collection()
-                except:
-                    pass
-            except:
-                pass
+                    print(f"   🗑️ Colección anterior eliminada")
+                except Exception as del_err:
+                    print(f"   ⚠️ No se pudo eliminar colección anterior: {str(del_err)}")
+            except Exception as temp_err:
+                print(f"   ⚠️ Error creando store temporal: {str(temp_err)}")
             
-            vector_store = PGVector.from_documents(
-                documents=chunks,
-                embedding=self.embeddings,
-                collection_name=collection_name,
-                connection_string=connection_string,
-            )
-            print(f"✅ Colección creada")
+            # Reintentar creación
+            try:
+                vector_store = PGVector.from_documents(
+                    documents=chunks,
+                    embedding=self.embeddings,
+                    collection_name=collection_name,
+                    connection_string=connection_string,
+                )
+                print(f"✅ Vector store recreado exitosamente")
+            except Exception as retry_err:
+                print(f"❌ ERROR FINAL creando vector store:")
+                print(f"   {str(retry_err)}")
+                raise
+        
+        print(f"{'='*60}")
+        print(f"✅ PROCESAMIENTO COMPLETADO")
+        print(f"{'='*60}\n")
         
         return vector_store
     
